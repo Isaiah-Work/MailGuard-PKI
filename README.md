@@ -96,3 +96,6 @@ Comparativa técnica enfocada en nuestro caso de uso:
 ### D. Resumen Ejecutivo
 * Definición concisa de PKI en sus propias palabras.
 * 2 Ejemplos de uso de PKI en la vida real (fuera del correo electrónico, ej: HTTPS, DNI electrónico).
+
+
+Formato Generado con Gemini.
