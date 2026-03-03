@@ -1,5 +1,25 @@
 # Proyecto: Sistema de Seguridad en Correo Electrónico (PKI)
 
+## Instrucciones de preparación de proyecto
+````
+    git clone https://github.com/Isaiah-Work/MailGuard-PKI.git
+    
+    # Aquí debes Logearte para autentificar tu cuenta.
+
+    cd MailGuard-PKI
+    
+    # Crear entorno Virtual
+    python -m venv env
+    # En Mac/Linux
+    source ./env/bin/activate
+    # En Windows
+    ./env/bin/activate
+
+    #Dentro del env
+    pip install -r requirements.txt
+````
+
+
 ## 📋 Descripción General
 Este proyecto tiene como objetivo diseñar e implementar un sistema de seguridad para correo electrónico basado en una **Infraestructura de Clave Pública (PKI)**. 
 
