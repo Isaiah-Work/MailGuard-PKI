@@ -57,6 +57,7 @@ def generate_root_ca(root_password=None):
     subject  = build_subject()
 
     print(f"\n[1/3] Generando clave privada RSA-{CA_CONFIG['key_size']}...")
+    
     run([
         "openssl", "genpkey",
         "-algorithm", "RSA",

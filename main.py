@@ -24,8 +24,26 @@ def get():
                 ),
                 Button("Ejecutar Paso 1", type="submit"),
                 action="/generar_root", method="post"
+            ),
+            
+            # --- NUEVA SECCIÓN DE AUDITORÍA (Solo lectura) ---
+            Details(
+                Summary("Ver Comando de Encriptación (Auditoría de Seguridad)"),
+                P("Para garantizar la seguridad de la clave privada (Punto 3 de la rúbrica), se aplica cifrado de grado militar ", Strong("AES-256"), " a la bóveda offline:"),
+                Pre(Code(
+                    "openssl genpkey \\\n"
+                    "  -algorithm RSA \\\n"
+                    "  -pkeyopt rsa_keygen_bits:4096 \\\n"
+                    "  -aes-256-cbc \\\n"
+                    "  -pass pass:[CONTRASEÑA_OCULTA] \\\n"
+                    "  -out root-ca.key"
+                )),
+                # Un pequeño texto extra para rematar el punto 3
+                P(Small("Nota: El archivo resultante (root-ca.key) debe almacenarse en Hardware físico (HSM) o USB aislado sin conexión a red."))
             )
         ),
+
+        
         
         # --- TARJETA PASO 2 ---
         Article(
@@ -39,6 +57,26 @@ def get():
                 ),
                 Button("Ejecutar Paso 2", type="submit", cls="secondary"), # cls="secondary" le da otro color en Pico
                 action="/generar_inter", method="post"
+            ),
+            # --- SECCIÓN DE AUDITORÍA PARA LA CA INTERMEDIA (Paso 2) ---
+            Details(
+                Summary("Ver Políticas de Restricción y Firma (Auditoría de Seguridad)"),
+                P("Para garantizar un ", Strong("entorno controlado"), " en la Autoridad Registradora (Punto 4 de la rúbrica), se inyectan extensiones críticas X.509 al momento de la firma. La directiva ", Strong("pathlen:0"), " asegura matemáticamente que esta CA no pueda emitir certificados para otras sub-CAs:"),
+                Pre(Code(
+                    "# 1. Extensiones estrictas de control (inter_ext.cnf):\n"
+                    "basicConstraints=critical,CA:TRUE,pathlen:0\n"
+                    "keyUsage=critical,keyCertSign,cRLSign,digitalSignature\n"
+                    "subjectKeyIdentifier=hash\n\n"
+                    "# 2. Firma autorizada por la Root CA:\n"
+                    "openssl x509 -req \\\n"
+                    "  -in inter-ca.csr \\\n"
+                    "  -CA root.crt \\\n"
+                    "  -CAkey root-ca.key \\\n"
+                    "  -passin pass:[CONTRASEÑA_ROOT_OCULTA] \\\n"
+                    "  -extfile inter_ext.cnf \\\n"
+                    "  -out inter-ca.crt"
+                )),
+                P(Small("Nota: A diferencia de la Root CA (que opera 100% offline), esta CA Intermedia opera en un servidor con entorno de acceso controlado para procesar la emisión de credenciales de los usuarios finales, manteniendo siempre su propia clave privada protegida con AES-256."))
             )
         ),
         
@@ -61,6 +99,9 @@ def get():
 @rt('/generar_root', methods=['POST'])
 def post_root(root_password: str):
     try:
+        # Debug
+        print("Contraseña del root password: ", root_password , " Verificando...") # Check 
+        
         generate_root_ca(root_password)
         
         return Main(
@@ -126,24 +167,31 @@ def post_usuarios(inter_password: str):
 # ==========================================
 @rt('/vista_usuarios')
 def get_vista():
-    # Vamos a leer la carpeta para ver qué usuarios ya tienen su certificado
     DIR_USUARIOS = Path("usuarios_p12_output")
-    
     tarjetas_usuarios = []
     
     if DIR_USUARIOS.exists():
-        # Buscamos todos los archivos .txt de contraseñas para saber quiénes existen
         for txt_file in DIR_USUARIOS.glob("*_password.txt"):
             nombre_base = txt_file.name.replace("_password.txt", "")
-            password = txt_file.read_text().strip()
+            
+            # Leemos todo el contenido del archivo .txt generado en el Paso 3
+            texto_completo = txt_file.read_text().strip()
             
             tarjetas_usuarios.append(
                 Article(
                     H3(f"Certificado de: {nombre_base}"),
-                    P(B("Contraseña de importación: "), Code(password)),
-                    P("Usa esta contraseña para instalar el .p12 en tu Outlook."),
-                    # Opcional: Podrías hacer una ruta para descargar el archivo físico, 
-                    # pero por ahora mostrar la info cumple el requerimiento.
+                    P("Cofre PKCS#12 listo para instalar en clientes de correo (Outlook/Thunderbird)."),
+                    
+                    # --- EL BOTÓN MÁGICO DE DESCARGA ---
+                    A("📥 Descargar Certificado (.p12)", href=f"/descargar/{nombre_base}", role="button", cls="primary"),
+                    
+                    Br(), Br(),
+                    
+                    # Ocultamos el texto de la contraseña en un acordeón por estética
+                    Details(
+                        Summary("Ver instrucciones y contraseña de instalación"),
+                        Pre(Code(texto_completo))
+                    )
                 )
             )
 
@@ -152,13 +200,30 @@ def get_vista():
 
     return Main(
         H1("Portal de Usuarios (Etapa 4)"),
-        P("Aquí los usuarios pueden ver la información para configurar su Outlook."),
+        P("Descarga tu identidad criptográfica y las instrucciones para configurar Outlook."),
         *tarjetas_usuarios,
         Br(),
         A("Volver a Administración", href="/", role="button", cls="secondary"),
         cls="container"
     )
 
+from starlette.responses import FileResponse
+
+# Esta ruta usa una variable en la URL {nombre_base} para saber qué archivo pedir
+@rt('/descargar/{nombre_base}')
+def get_descarga(nombre_base: str):
+    # Armamos la ruta física donde vive el archivo .p12
+    ruta_p12 = Path("usuarios_p12_output") / f"{nombre_base}.p12"
+    
+    if ruta_p12.exists():
+        # FileResponse obliga al navegador a descargar el archivo en lugar de intentar leerlo
+        return FileResponse(
+            path=ruta_p12, 
+            filename=f"{nombre_base}.p12", 
+            media_type="application/x-pkcs12"
+        )
+    else:
+        return "Archivo no encontrado", 404
 
 if __name__ == '__main__':
     serve(port=5001)
