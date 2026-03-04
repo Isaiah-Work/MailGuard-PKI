@@ -63,7 +63,19 @@ def build_subject(nombre, email):
     ou = USER_CONFIG["org_unit"]
     return f"/C={c}/ST={st}/L={l}/O={o}/OU={ou}/CN={nombre}/emailAddress={email}"
 
-def generate_user_p12(usuario, inter_password, p12_password):
+def get_user_password(nombre):
+    """Solicita y confirma la contraseña del archivo .p12 del usuario (Modo Terminal)."""
+    while True:
+        password = getpass(f"    Contraseña para el .p12 de {nombre}: ")
+        confirm  = getpass(f"    Confirma la contraseña: ")
+        if len(password) < 8:
+            print("    [!] Mínimo 8 caracteres.")
+        elif password != confirm:
+            print("    [!] Las contraseñas no coinciden.")
+        else:
+            return password
+
+def generate_user_p12(usuario, inter_password=None, p12_password_web=None):
     """
     Genera el archivo PKCS#12 para un usuario individual.
 
@@ -87,8 +99,9 @@ def generate_user_p12(usuario, inter_password, p12_password):
     print("=" * 60)
 
     # Pedimos la contraseña de la CA Intermedia una sola vez
-    inter_password = getpass("  Contraseña de la CA Intermedia (para firmar): ")
-
+    if inter_password is None:
+        inter_password = getpass("  Contraseña de la CA Intermedia (para firmar): ")
+    
     nombre   = usuario["nombre"]
     email    = usuario["email"]
     filename = usuario["filename"]
@@ -154,7 +167,11 @@ def generate_user_p12(usuario, inter_password, p12_password):
 
     # ── 4. Empaquetar en PKCS#12 ──
     print(f"    [4/5] Empaquetando en PKCS#12...")
-    p12_password = get_user_password(nombre)
+
+    if p12_password_web is None:
+        p12_password = get_user_password(nombre)
+    else:
+        p12_password = p12_password_web
 
     run([
         "openssl", "pkcs12",
@@ -166,6 +183,9 @@ def generate_user_p12(usuario, inter_password, p12_password):
         "-passout", f"pass:{p12_password}", # Contraseña de protección del .p12
         "-out", str(user_p12_path)
     ])
+
+    pass_txt_path = OUTPUT_DIR / f"{filename}_password.txt"
+    pass_txt_path.write_text(p12_password)
 
     # ── 5. Limpiar archivos temporales ──
     print(f"    [5/5] Limpiando archivos temporales...")

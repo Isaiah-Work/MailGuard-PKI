@@ -49,7 +49,7 @@ def build_subject():
     return f"/C={c}/ST={st}/L={l}/O={o}/OU={ou}/CN={cn}/emailAddress={em}"
 
 # Funciones a cambiar
-def generate_ca_intermedio(root_password, inter_password):
+def generate_ca_intermedio(root_password=None, inter_password=None):
     OUTPUT_DIR = Path("ca_intermedia_output")
     DIR_ROOT = Path("root_ca_output")
 
@@ -92,9 +92,13 @@ def generate_ca_intermedio(root_password, inter_password):
     print("=" * 60)
 
     # Pedimos la cotraseña del root para desencriptar y la nueva para firmar al CA intermedio.
-    root_password = getpass("  Contraseña de la Root CA (para firmar): ")
+    if(root_password is None):
+        root_password = getpass("  Contraseña de la Root CA (para firmar): ")
     print("\n  -- Credenciales para la NUEVA CA Intermedia --")
-    inter_password = get_password()
+    
+    if(inter_password is None):
+        print("\n  -- Credenciales para la NUEVA CA Intermedia --")
+        inter_password = getpass("  Contraseña para la CA Intermedia: ")
 
     subject  = build_subject() # Creamos el Subject de esta nueva CA.
 

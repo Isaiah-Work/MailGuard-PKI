@@ -3,6 +3,20 @@ import sys
 from pathlib import Path
 from getpass import getpass
 
+CA_CONFIG = {
+    "country":      "MX",
+    "state":        "Estado de Mexico",
+    "locality":     "Huixquilucan",
+    "org":          "Universidad Anahuac",
+    "org_unit":     "Matemáticas Discretas",
+    "common_name":  "Root CA Anahuac 2026",
+    "email":        "alexander.oliva@anahuac.mx",
+    "valid_days":   3650,
+    "key_size":     4096,
+}
+
+OUTPUT_DIR = Path("root_ca_output")
+
 def run(cmd):
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -21,19 +35,7 @@ def build_subject():
     return f"/C={c}/ST={st}/L={l}/O={o}/OU={ou}/CN={cn}/emailAddress={em}"
 
 
-def generate_root_ca(root_password):
-
-    CA_CONFIG = {
-        "country":      "MX",
-        "state":        "Estado de Mexico",
-        "locality":     "Huixquilucan",
-        "org":          "Universidad Anahuac",
-        "org_unit":     "Matemáticas Discretas",
-        "common_name":  "Root CA Anahuac 2026",
-        "email":        "alexander.oliva@anahuac.mx",
-        "valid_days":   3650,
-        "key_size":     4096,
-    }
+def generate_root_ca(root_password=None):
 
 
     OUTPUT_DIR.mkdir(exist_ok=True)
@@ -47,7 +49,11 @@ def generate_root_ca(root_password):
     print("=" * 60)
     print("\n[!] La clave privada se cifrará con AES-256.\n")
 
-    password = root_password
+    if root_password is None:
+        password = getpass()
+    else:
+        password = root_password
+
     subject  = build_subject()
 
     print(f"\n[1/3] Generando clave privada RSA-{CA_CONFIG['key_size']}...")
