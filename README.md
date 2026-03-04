@@ -17,6 +17,15 @@
 
     #Dentro del env
     pip install -r requirements.txt
+
+    # Para entornos fuera de UNIX para correr el programa sin instalar mucho, suponiendo que se tiene git
+    # Abrir la terminal bash de Git, ir a la ruta de la carpeta
+    source ./env/Scripts/activate
+    python main.py
+
+    # Hacerlo de esta forma permite seguir utilizando el código actual sin necesidad de instalar openssl,
+    # ya que nos servimos del bash de MNGWIN64 para correr unicamente el binario de openssl.
+    
 ````
 
 
