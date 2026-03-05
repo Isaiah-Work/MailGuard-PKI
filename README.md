@@ -1,5 +1,7 @@
 # Proyecto: Sistema de Seguridad en Correo Electrónico (PKI)
 
+**http://mailguard.ddns.net:8099/**  Enlace de Prueba
+
 ## Instrucciones de preparación de proyecto
 ````
     git clone https://github.com/Isaiah-Work/MailGuard-PKI.git
