@@ -89,7 +89,20 @@ def get():
                 ),
                 Button("Generar credenciales para usuarios", type="submit", cls="contrast"),
                 action="/generar_usuarios", method="post"
-            )
+            ),
+            # --- SECCIÓN DE ESTÁNDARES IETF (Punto 8) ---
+            Details(
+                Summary("Ver Cumplimiento de Estándares IETF (RFCs aplicados)"),
+                P("Toda la arquitectura y criptografía de esta PKI opera bajo las siguientes especificaciones formales de la IETF:"),
+                Ul(
+                    Li(Strong("RFC 5280 (X.509 v3): "), "Aplicado en la inyección de extensiones como ", Code("basicConstraints"), " y ", Code("pathlen"), " para limitar la jerarquía."),
+                    Li(Strong("RFC 8017 (RSA): "), "Implementado al exigir llaves de alta seguridad mediante ", Code("-pkeyopt rsa_keygen_bits:4096"), "."),
+                    Li(Strong("RFC 5208 (PKCS#8): "), "Garantiza el almacenamiento seguro de la clave privada usando la bandera de cifrado ", Code("-aes-256-cbc"), "."),
+                    Li(Strong("RFC 7292 (PKCS#12): "), "Estándar de contenedores criptográficos, usado al empaquetar certificados y llaves de usuario en el archivo final ", Code(".p12"), "."),
+                    Li(Strong("RFC 8551 (S/MIME v4.0): "), "Rige la preparación de los certificados para que clientes como Outlook confíen en ellos para el cifrado de correos.")
+                ),
+                P(Small("Nota: El cumplimiento de estos RFCs garantiza interoperabilidad total con cualquier software comercial o sistema operativo moderno."))
+            ),
         ),
         
         cls="container"
@@ -226,4 +239,5 @@ def get_descarga(nombre_base: str):
         return "Archivo no encontrado", 404
 
 if __name__ == '__main__':
-    serve(port=5001)
+    #serve(port=5001)
+    serve(host="0.0.0.0", port=8099)
