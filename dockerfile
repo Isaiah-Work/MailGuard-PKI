@@ -1,0 +1,31 @@
+FROM python:3.12-slim
+
+LABEL maintainer="MailGuard-PKI Team"
+LABEL description="PKI Management Panel for S/MIME certificates"
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Instalar OpenSSL (necesario para generación de certificados)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openssl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Instalar dependencias
+COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copiar código fuente
+COPY main.py .
+COPY crypto_core/ ./crypto_core/
+
+# Crear directorios de salida
+RUN mkdir -p root_ca_output ca_intermedia_output usuarios_p12_output
+
+EXPOSE 8099
+
+CMD ["python", "main.py"]

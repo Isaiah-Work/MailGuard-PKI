@@ -1,0 +1,25 @@
+# Entorno virtual
+venv/
+env/
+
+# Cache de Python
+__pycache__
+*.pyc
+*.pyo
+
+# Git
+.git
+.gitignore
+
+# Archivos criptográficos existentes (se generan dentro del contenedor)
+root_ca_output/
+ca_intermedia_output/
+usuarios_p12_output/
+
+# Documentación
+README.md
+
+# Docker (evitar recursión)
+Dockerfile
+docker-compose.yml
+.dockerignore

@@ -1,0 +1,12 @@
+services:
+  mailguard-pki:
+    build: .
+    container_name: mailguard-pki
+    ports:
+      - "8099:8099"
+    volumes:
+      # Persistir los certificados generados fuera del contenedor
+      - ./root_ca_output:/app/root_ca_output
+      - ./ca_intermedia_output:/app/ca_intermedia_output
+      - ./usuarios_p12_output:/app/usuarios_p12_output
+    restart: unless-stopped
