@@ -131,6 +131,7 @@ def generate_ca_intermedio(root_password=None, inter_password=None):
         "basicConstraints=critical,CA:TRUE,pathlen:0\n"
         "keyUsage=critical,keyCertSign,cRLSign,digitalSignature\n"
         "subjectKeyIdentifier=hash\n"
+        "authorityKeyIdentifier=keyid,issuer\n"
     )
 
     run([
@@ -158,6 +159,25 @@ def generate_ca_intermedio(root_password=None, inter_password=None):
     inter_csr_path.unlink(missing_ok=True)
     ext_file.unlink(missing_ok=True)
     print("      ✔ Archivos temporales (CSR y .cnf) eliminados.")
+
+    # --- Preparar infraestructura para CRL ---
+    print("[+] Preparando base de datos para CRL...")
+    index_path = OUTPUT_DIR / "index.txt"
+    index_path.touch(exist_ok=True)
+
+    crlnumber_path = OUTPUT_DIR / "crlnumber"
+    if not crlnumber_path.exists():
+        crlnumber_path.write_text("01\n")
+
+    crl_dir = OUTPUT_DIR / "crl"
+    crl_dir.mkdir(exist_ok=True)
+    print("      ✔ index.txt, crlnumber y directorio crl/ listos.")
+
+    # Generar CRL inicial (vacío) para que el endpoint /crl/inter-ca.crl
+    # responda desde el día 1, antes de cualquier revocación.
+    from crypto_core.crl import generar_crl
+    generar_crl(inter_password)
+    print("      ✔ CRL inicial vacío generado.")
 
     # --- Resumen Final ---
     print("\n" + "=" * 60)

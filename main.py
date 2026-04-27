@@ -231,12 +231,26 @@ def get_descarga(nombre_base: str):
     if ruta_p12.exists():
         # FileResponse obliga al navegador a descargar el archivo en lugar de intentar leerlo
         return FileResponse(
-            path=ruta_p12, 
-            filename=f"{nombre_base}.p12", 
+            path=ruta_p12,
+            filename=f"{nombre_base}.p12",
             media_type="application/x-pkcs12"
         )
     else:
         return "Archivo no encontrado", 404
+
+# Endpoint público que sirve el CRL referenciado por la extensión
+# crlDistributionPoints embebida en cada certificado de usuario.
+# Los clientes de correo (Outlook/Thunderbird) lo descargan automáticamente
+# para validar revocaciones (RFC 5280 §4.2.1.13).
+@rt('/crl/inter-ca.crl')
+def get_crl():
+    crl_path = Path("ca_intermedia_output/crl/inter-ca.crl")
+    if crl_path.exists():
+        return FileResponse(
+            path=crl_path,
+            media_type="application/pkix-crl"
+        )
+    return "CRL no disponible", 404
 
 if __name__ == '__main__':
     #serve(port=5001)
