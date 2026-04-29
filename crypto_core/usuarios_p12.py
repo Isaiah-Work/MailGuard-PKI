@@ -77,7 +77,7 @@ def get_user_password(nombre):
         else:
             return password
 
-def generate_user_p12(usuario, inter_password=None, p12_password_web=None):
+def generate_user_p12(usuario, inter_password=None, p12_password_web=None, master_password=None):
     """
     Genera el archivo PKCS#12 para un usuario individual.
 
@@ -190,9 +190,21 @@ def generate_user_p12(usuario, inter_password=None, p12_password_web=None):
     pass_txt_path = OUTPUT_DIR / f"{filename}_password.txt"
     pass_txt_path.write_text(p12_password)
 
+    # ── 4b. Guardar copia en escrow administrativo (KRA) ──
+    if master_password:
+        from crypto_core.escrow import store_escrow
+        store_escrow(
+            filename,
+            user_key_path.read_bytes(),
+            user_crt_path.read_bytes(),
+            master_password,
+        )
+        print(f"    [+] Cofre de {filename} guardado en escrow para recuperacion.")
+
     # ── 5. Limpiar archivos temporales ──
     print(f"    [5/5] Limpiando archivos temporales...")
-    for temp_file in [user_key_path, user_csr_path, user_crt_path, user_ext_path]:
+    # Nota: user_crt_path NO se borra — es necesario para revocar el certificado mas adelante.
+    for temp_file in [user_key_path, user_csr_path, user_ext_path]:
         temp_file.unlink(missing_ok=True)
 
     print(f"    ✔ {user_p12_path} generado exitosamente.")

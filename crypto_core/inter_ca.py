@@ -49,7 +49,7 @@ def build_subject():
     return f"/C={c}/ST={st}/L={l}/O={o}/OU={ou}/CN={cn}/emailAddress={em}"
 
 # Funciones a cambiar
-def generate_ca_intermedio(root_password=None, inter_password=None):
+def generate_ca_intermedio(root_password=None, inter_password=None, master_password=None):
     OUTPUT_DIR = Path("ca_intermedia_output")
     DIR_ROOT = Path("root_ca_output")
 
@@ -178,6 +178,12 @@ def generate_ca_intermedio(root_password=None, inter_password=None):
     from crypto_core.crl import generar_crl
     generar_crl(inter_password)
     print("      ✔ CRL inicial vacío generado.")
+
+    # --- Inicializar escrow administrativo (KRA) ---
+    if master_password:
+        from crypto_core.escrow import initialize_master
+        initialize_master(master_password)
+        print("      ✔ Master de escrow (KRA) inicializado.")
 
     # --- Resumen Final ---
     print("\n" + "=" * 60)

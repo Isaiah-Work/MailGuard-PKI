@@ -2,7 +2,8 @@ from fasthtml.common import *
 from pathlib import Path
 from crypto_core.root_ca import generate_root_ca
 from crypto_core.inter_ca import generate_ca_intermedio
-from crypto_core.usuarios_p12 import generate_user_p12, USUARIOS
+from crypto_core.usuarios_p12 import generate_user_p12
+from crypto_core import ra
 
 # Al no pasarle argumentos, FastHTML usa Pico CSS por defecto
 app, rt = fast_app()
@@ -55,6 +56,9 @@ def get():
                 Label("Nueva contraseña para la CA Intermedia:",
                     Input(type="password", name="inter_password", required=True)
                 ),
+                Label("Master password para escrow administrativo (KRA):",
+                    Input(type="password", name="master_password", required=True)
+                ),
                 Button("Ejecutar Paso 2", type="submit", cls="secondary"), # cls="secondary" le da otro color en Pico
                 action="/generar_inter", method="post"
             ),
@@ -80,17 +84,21 @@ def get():
             )
         ),
         
-        # --- TARJETA PASO 3 ---
+        # --- TARJETA PASO 3: REGISTRATION AUTHORITY ---
         Article(
-            H2("Paso 3: Certificados de Usuarios (.p12)"),
-            Form(
-                Label("Contraseña de la CA Intermedia (para firmar):",
-                    Input(type="password", name="inter_password", required=True)
-                ),
-                Button("Generar credenciales para usuarios", type="submit", cls="contrast"),
-                action="/generar_usuarios", method="post"
+            H2("Paso 3: Registration Authority (RA)"),
+            P("La emisión de certificados ya no parte de una lista hardcoded. "
+              "Se separa en dos roles claramente acotados:"),
+            Ul(
+                Li(Strong("Admin: "), "desbloquea la CA, enrola usuarios pre-validados "
+                   "y supervisa el padrón. Entra a ", A("/admin", href="/admin"), "."),
+                Li(Strong("Usuario final: "), "se autentica con su email y password personal "
+                   "para emitir su propio cert. Entra a ", A("/solicitar", href="/solicitar"), ".")
             ),
-            # --- SECCIÓN DE ESTÁNDARES IETF (Punto 8) ---
+            Br(),
+            A("Panel de Administración", href="/admin", role="button", cls="contrast"),
+            " ",
+            A("Solicitar mi certificado", href="/solicitar", role="button", cls="outline"),
             Details(
                 Summary("Ver Cumplimiento de Estándares IETF (RFCs aplicados)"),
                 P("Toda la arquitectura y criptografía de esta PKI opera bajo las siguientes especificaciones formales de la IETF:"),
@@ -104,7 +112,84 @@ def get():
                 P(Small("Nota: El cumplimiento de estos RFCs garantiza interoperabilidad total con cualquier software comercial o sistema operativo moderno."))
             ),
         ),
-        
+
+
+        # --- TARJETA PASO 4 (compartido): REVOCACIÓN ---
+        Article(
+            H2("Paso 4: Revocar certificado"),
+            P(Small(
+                "Marca un certificado como inválido. Se actualiza el CRL automáticamente "
+                "para que los clientes de correo lo rechacen. La razón sigue ",
+                Strong("RFC 5280 §5.3.1"), "."
+            )),
+            Form(
+                Label("Contraseña de la CA Intermedia:",
+                    Input(type="password", name="inter_password", required=True)
+                ),
+                Label("Nombre base del usuario (ej: jaime_chuma):",
+                    Input(type="text", name="cert_filename", required=True)
+                ),
+                Label("Motivo de la revocación:",
+                    Select(
+                        Option("unspecified — sin razón específica", value="unspecified"),
+                        Option("keyCompromise — clave privada filtrada o robada", value="keyCompromise"),
+                        Option("affiliationChanged — cambió la afiliación del titular", value="affiliationChanged"),
+                        Option("superseded — reemplazado por un cert nuevo", value="superseded"),
+                        Option("cessationOfOperation — el titular dejó de operar", value="cessationOfOperation"),
+                        Option("certificateHold — suspensión temporal (reversible)", value="certificateHold"),
+                        name="motivo"
+                    )
+                ),
+                Button("Revocar certificado", type="submit", cls="secondary"),
+                action="/revocar", method="post"
+            ),
+            Details(
+                Summary("Ver guía de motivos de revocación (RFC 5280 §5.3.1)"),
+                Ul(
+                    Li(Strong("keyCompromise: "), "el .p12 fue compartido, robado o filtrado. Prioridad máxima."),
+                    Li(Strong("affiliationChanged: "), "el alumno se cambió de universidad o de unidad organizacional."),
+                    Li(Strong("superseded: "), "se emitió uno nuevo (renovación, mejora de algoritmo) sin compromiso."),
+                    Li(Strong("cessationOfOperation: "), "el titular se graduó o ya no usa el cert."),
+                    Li(Strong("certificateHold: "), "suspensión investigativa — única razón reversible (con removeFromCRL)."),
+                    Li(Strong("unspecified: "), "no documenta razón. Algunos clientes lo tratan como keyCompromise por precaución.")
+                )
+            )
+        ),
+
+        # --- TARJETA PASO 5: RECUPERACIÓN KRA ---
+        Article(
+            H2("Paso 5: Recuperación administrativa (KRA)"),
+            P(Small(
+                "Si un usuario pierde su .p12 o su contraseña, el admin puede generar un nuevo .p12 "
+                "a partir del cofre escrow guardado en el Paso 3. Requiere el ", Strong("master password"),
+                " establecido al crear la CA Intermedia."
+            )),
+            Form(
+                Label("Master password de escrow:",
+                    Input(type="password", name="master_password", required=True)
+                ),
+                Label("Nombre base del usuario (ej: jaime_chuma):",
+                    Input(type="text", name="cert_filename", required=True)
+                ),
+                Label("Nueva contraseña para el .p12 recuperado:",
+                    Input(type="password", name="new_p12_password", required=True)
+                ),
+                Button("Recuperar .p12", type="submit", cls="secondary"),
+                action="/recuperar", method="post"
+            ),
+            Br(),
+            A("Ver log de auditoría de recuperaciones", href="/escrow_audit", role="button", cls="outline"),
+            Details(
+                Summary("Modelo de seguridad y trade-offs"),
+                Ul(
+                    Li("El cofre escrow está cifrado con ", Strong("AES-256-CBC + PBKDF2 (100k iteraciones)"), " bajo el master password."),
+                    Li("Cada recuperación queda registrada con timestamp UTC en ", Code("ca_intermedia_output/escrow/audit.log"), "."),
+                    Li("Recuperar un .p12 entrega al admin acceso al material criptográfico del usuario, lo que ", Strong("debilita el no-repudio"), " de las firmas históricas. Los usuarios deben estar informados."),
+                    Li("Para producción real, el master debería estar en un HSM o dividido entre múltiples admins (Shamir secret sharing).")
+                )
+            )
+        ),
+
         cls="container"
     )
 
@@ -140,40 +225,334 @@ def post_root(root_password: str):
 # Aquí irían las rutas @rt('/generar_inter') y @rt('/generar_usuarios') en el futuro
 
 @rt('/generar_inter', methods=['POST'])
-def post_inter(root_password: str, inter_password: str):
+def post_inter(root_password: str, inter_password: str, master_password: str):
     try:
-        generate_ca_intermedio(root_password, inter_password)
+        generate_ca_intermedio(root_password, inter_password, master_password)
         return Main(
             Article(
                 H1("¡CA Intermedia Generada! 🔐"),
                 P("La cadena de confianza (chain.crt) está lista."),
+                P("El master de escrow (KRA) quedó inicializado. Guárdalo en lugar seguro: sin él no se podrán recuperar cofres .p12."),
                 A("Volver al Inicio", href="/", role="button", cls="outline")
             ), cls="container"
         )
     except Exception as e:
         return Main(Article(H1("Error ❌"), Pre(str(e)), A("Volver", href="/", role="button")), cls="container")
 
-# RUTA PARA EL PASO 3
-@rt('/generar_usuarios', methods=['POST'])
-def post_usuarios(inter_password: str):
+# ==========================================
+# RUTAS DE LA REGISTRATION AUTHORITY (RA)
+# ==========================================
+# La emisión de certificados de usuario ya no parte de una lista hardcoded.
+# El admin enrola usuarios en /admin (RA) y desbloquea la CA con sus passwords.
+# Los usuarios se auto-sirven en /solicitar (autenticando contra la RA).
+
+@rt('/admin')
+def get_admin():
+    estado = "Desbloqueada ✅" if ra.is_unlocked() else "Bloqueada 🔒"
+    info = ra.session_info()
+    desde = info.get("since") if info else "—"
+
+    return Main(
+        H1("Panel de Administración (RA)"),
+        P(Small("Operaciones que solo el admin puede realizar: desbloquear la CA, "
+                "enrolar usuarios y consultar el padrón de identidades.")),
+
+        Article(
+            H2("Estado de la CA"),
+            P(Strong("Estado actual: "), estado),
+            P(Strong("Desde: "), Code(desde)),
+            P(Small("Mientras esté desbloqueada, los usuarios pueden auto-servirse "
+                    "en /solicitar usando sus credenciales personales.")),
+        ),
+
+        Article(
+            H2("1. Desbloquear CA"),
+            P("Cachea inter_password y master_password en memoria del proceso. "
+              "Necesario antes de que cualquier usuario pueda solicitar un cert."),
+            Form(
+                Label("Tu password de admin:",
+                    Input(type="password", name="admin_password", required=True)),
+                Label("Password de la CA Intermedia:",
+                    Input(type="password", name="inter_password", required=True)),
+                Label("Master password de escrow (KRA):",
+                    Input(type="password", name="master_password", required=True)),
+                Button("Desbloquear", type="submit"),
+                action="/admin/unlock", method="post"
+            ),
+        ),
+
+        Article(
+            H2("2. Bloquear CA"),
+            P("Olvida los passwords cacheados. Los usuarios no podrán solicitar "
+              "más certs hasta el siguiente desbloqueo."),
+            Form(
+                Label("Tu password de admin:",
+                    Input(type="password", name="admin_password", required=True)),
+                Button("Bloquear", type="submit", cls="secondary"),
+                action="/admin/lock", method="post"
+            ),
+        ),
+
+        Article(
+            H2("3. Enrolar nuevo usuario"),
+            P("Crea una identidad pre-validada en la RA. El filename se deriva "
+              "automáticamente del email (ej: ", Code("jaime.chumacero@anahuac.mx"),
+              " → ", Code("jaime_chumacero"), ")."),
+            Form(
+                Label("Tu password de admin:",
+                    Input(type="password", name="admin_password", required=True)),
+                Label("Email institucional del usuario:",
+                    Input(type="email", name="email", required=True)),
+                Label("Nombre completo:",
+                    Input(type="text", name="nombre", required=True)),
+                Label("Unidad organizacional:",
+                    Input(type="text", name="org_unit", value="Alumnos", required=True)),
+                Label("Password personal del usuario (entregar por canal seguro):",
+                    Input(type="password", name="user_password", required=True)),
+                Button("Enrolar usuario", type="submit", cls="contrast"),
+                action="/admin/enroll", method="post"
+            ),
+        ),
+
+        Article(
+            H2("4. Consultar padrón"),
+            Form(
+                Label("Tu password de admin:",
+                    Input(type="password", name="admin_password", required=True)),
+                Button("Ver usuarios enrolados", type="submit", cls="outline"),
+                action="/admin/usuarios", method="post"
+            ),
+            Br(),
+            Form(
+                Label("Tu password de admin:",
+                    Input(type="password", name="admin_password", required=True)),
+                Button("Ver bitácora de emisiones", type="submit", cls="outline"),
+                action="/admin/emisiones", method="post"
+            ),
+        ),
+
+        Br(),
+        A("Volver al inicio", href="/", role="button", cls="secondary"),
+        cls="container"
+    )
+
+
+def _admin_error(msg: str):
+    return Main(
+        Article(
+            H1("Error ❌"),
+            Pre(str(msg)),
+            A("Volver al panel", href="/admin", role="button", cls="secondary")
+        ),
+        cls="container"
+    )
+
+
+@rt('/admin/unlock', methods=['POST'])
+def post_admin_unlock(admin_password: str, inter_password: str, master_password: str):
     try:
-        # Generamos una contraseña genérica para los usuarios en la demo web
-        # (Podrías pedirla en el formulario también, pero así es más rápido)
-        pass_demo = "Alumno2026!" 
-        
-        for usuario in USUARIOS:
-            generate_user_p12(usuario, inter_password, pass_demo)
-            
+        ra.admin_unlock(admin_password, inter_password, master_password)
         return Main(
             Article(
-                H1("¡Certificados de Usuario Generados! 🧑‍🎓"),
-                P("Los archivos .p12 ya están listos para descargarse."),
-                # BOTÓN DIRECTO A TU ETAPA 4
-                A("Ir a la Vista de Usuarios (Etapa 4)", href="/vista_usuarios", role="button", cls="contrast")
-            ), cls="container"
+                H1("CA desbloqueada ✅"),
+                P("Los usuarios ya pueden solicitar certificados en ", Code("/solicitar"), "."),
+                A("Volver al panel", href="/admin", role="button", cls="outline")
+            ),
+            cls="container"
         )
     except Exception as e:
-        return Main(Article(H1("Error ❌"), Pre(str(e)), A("Volver", href="/", role="button")), cls="container")
+        return _admin_error(e)
+
+
+@rt('/admin/lock', methods=['POST'])
+def post_admin_lock(admin_password: str):
+    if not ra.verify_admin(admin_password):
+        return _admin_error("Admin password incorrecto.")
+    ra.admin_lock()
+    return Main(
+        Article(
+            H1("CA bloqueada 🔒"),
+            P("Los passwords cacheados fueron olvidados. Las solicitudes nuevas serán rechazadas hasta el próximo desbloqueo."),
+            A("Volver al panel", href="/admin", role="button", cls="outline")
+        ),
+        cls="container"
+    )
+
+
+@rt('/admin/enroll', methods=['POST'])
+def post_admin_enroll(
+    admin_password: str,
+    email: str,
+    nombre: str,
+    org_unit: str,
+    user_password: str,
+):
+    if not ra.verify_admin(admin_password):
+        return _admin_error("Admin password incorrecto.")
+    try:
+        usuario = ra.enroll_user(email, nombre, org_unit, user_password)
+        return Main(
+            Article(
+                H1("Usuario enrolado ✅"),
+                P(Strong("Email: "), usuario["email"]),
+                P(Strong("Nombre: "), usuario["nombre"]),
+                P(Strong("Filename derivado: "), Code(usuario["filename"])),
+                P(Strong("OU: "), usuario["org_unit"]),
+                P(Small("Comunica al usuario su password personal por canal seguro "
+                        "(en persona, correo institucional firmado, sobre cerrado).")),
+                A("Volver al panel", href="/admin", role="button", cls="outline")
+            ),
+            cls="container"
+        )
+    except Exception as e:
+        return _admin_error(e)
+
+
+@rt('/admin/usuarios', methods=['POST'])
+def post_admin_usuarios(admin_password: str):
+    if not ra.verify_admin(admin_password):
+        return _admin_error("Admin password incorrecto.")
+    usuarios = ra.list_users()
+    if not usuarios:
+        return Main(
+            Article(
+                H1("Padrón de usuarios"),
+                P("Aún no hay usuarios enrolados."),
+                A("Volver al panel", href="/admin", role="button", cls="outline")
+            ),
+            cls="container"
+        )
+    filas = [Tr(
+        Th("ID"), Th("Email"), Th("Nombre"), Th("Filename"),
+        Th("OU"), Th("Estado"), Th("Enrolado"), Th("Última solicitud"), Th("Fallidos")
+    )]
+    for u in usuarios:
+        filas.append(Tr(
+            Td(str(u["id"])), Td(u["email"]), Td(u["nombre"]),
+            Td(Code(u["filename"])), Td(u["org_unit"]), Td(u["status"]),
+            Td(u["enrolled_at"]), Td(u["last_request_at"] or "—"),
+            Td(str(u["failed_attempts"]))
+        ))
+    return Main(
+        H1("Padrón de usuarios"),
+        Table(*filas),
+        Br(),
+        A("Volver al panel", href="/admin", role="button", cls="outline"),
+        cls="container"
+    )
+
+
+@rt('/admin/emisiones', methods=['POST'])
+def post_admin_emisiones(admin_password: str):
+    if not ra.verify_admin(admin_password):
+        return _admin_error("Admin password incorrecto.")
+    emisiones = ra.list_emissions()
+    if not emisiones:
+        return Main(
+            Article(
+                H1("Bitácora de emisiones"),
+                P("Aún no se han emitido certificados."),
+                A("Volver al panel", href="/admin", role="button", cls="outline")
+            ),
+            cls="container"
+        )
+    filas = [Tr(
+        Th("ID"), Th("Fecha"), Th("Email"), Th("Nombre"), Th("Filename"), Th("IP")
+    )]
+    for e in emisiones:
+        filas.append(Tr(
+            Td(str(e["id"])), Td(e["issued_at"]), Td(e["email"]),
+            Td(e["nombre"]), Td(Code(e["filename"])), Td(e["issued_ip"] or "—")
+        ))
+    return Main(
+        H1("Bitácora de emisiones"),
+        Table(*filas),
+        Br(),
+        A("Volver al panel", href="/admin", role="button", cls="outline"),
+        cls="container"
+    )
+
+
+# ==========================================
+# RUTAS PÚBLICAS DE AUTO-SERVICIO
+# ==========================================
+@rt('/solicitar')
+def get_solicitar():
+    estado_msg = (
+        P("✅ La CA está desbloqueada. Tu solicitud podrá procesarse al instante.")
+        if ra.is_unlocked()
+        else P("⚠ La CA está bloqueada. El admin debe desbloquearla antes de que tu solicitud pueda procesarse.")
+    )
+    return Main(
+        H1("Solicitar mi certificado S/MIME"),
+        P("Si fuiste pre-registrado por el administrador, autenticate con tu email "
+          "institucional y tu password personal para emitir tu certificado."),
+        estado_msg,
+        Article(
+            Form(
+                Label("Email institucional:",
+                    Input(type="email", name="email", required=True)),
+                Label("Tu password personal (la que te dio el admin):",
+                    Input(type="password", name="user_password", required=True)),
+                Label("Contraseña que tendrá tu archivo .p12 (tú la eliges):",
+                    Input(type="password", name="p12_password", required=True, minlength="8")),
+                Button("Emitir mi certificado", type="submit"),
+                action="/solicitar", method="post"
+            ),
+        ),
+        Br(),
+        A("Volver al inicio", href="/", role="button", cls="secondary"),
+        cls="container"
+    )
+
+
+@rt('/solicitar', methods=['POST'])
+def post_solicitar(req, email: str, user_password: str, p12_password: str):
+    try:
+        if not ra.is_unlocked():
+            raise RuntimeError(
+                "La CA está bloqueada. Pide al admin que la desbloquee y vuelve a intentar."
+            )
+        usuario = ra.authenticate_user(email, user_password)
+        inter_pw, master_pw = ra.get_session_passwords()
+
+        usuario_dict = {
+            "nombre": usuario["nombre"],
+            "email": usuario["email"],
+            "filename": usuario["filename"],
+        }
+        generate_user_p12(usuario_dict, inter_pw, p12_password, master_pw)
+
+        ip = req.client.host if req.client else None
+        ra.record_emission(usuario["id"], usuario["filename"], ip)
+
+        return Main(
+            Article(
+                H1("Certificado emitido ✅"),
+                P(f"Bienvenido, ", Strong(usuario["nombre"]), "."),
+                P("Tu archivo PKCS#12 está listo para descargarse:"),
+                A("📥 Descargar mi .p12", href=f"/descargar/{usuario['filename']}",
+                  role="button", cls="contrast"),
+                Br(), Br(),
+                P(Small(
+                    "⚠ Recuerda la contraseña que elegiste para el .p12 — "
+                    "la necesitarás al importarlo en Outlook/Thunderbird/Apple Mail. "
+                    "Si la olvidas, el admin puede generarte uno nuevo desde el módulo KRA."
+                )),
+                A("Volver al inicio", href="/", role="button", cls="outline")
+            ),
+            cls="container"
+        )
+    except Exception as e:
+        return Main(
+            Article(
+                H1("Solicitud rechazada ❌"),
+                Pre(str(e)),
+                A("Volver", href="/solicitar", role="button", cls="secondary")
+            ),
+            cls="container"
+        )
+
 
 # ==========================================
 # RUTA PARA TU ETAPA 4: LA VISTA DEL USUARIO
@@ -220,7 +599,7 @@ def get_vista():
         cls="container"
     )
 
-from starlette.responses import FileResponse
+from starlette.responses import FileResponse, Response
 
 # Esta ruta usa una variable en la URL {nombre_base} para saber qué archivo pedir
 @rt('/descargar/{nombre_base}')
@@ -251,6 +630,80 @@ def get_crl():
             media_type="application/pkix-crl"
         )
     return "CRL no disponible", 404
+
+# ==========================================
+# RUTA DE REVOCACIÓN
+# ==========================================
+@rt('/revocar', methods=['POST'])
+def post_revocar(inter_password: str, cert_filename: str, motivo: str = "unspecified"):
+    try:
+        from crypto_core.crl import revocar_certificado
+        cert_path = Path("usuarios_p12_output") / f"{cert_filename}.crt"
+        if not cert_path.exists():
+            raise FileNotFoundError(
+                f"No se encontró el certificado: {cert_path}. "
+                f"Ejecuta el Paso 3 primero para generarlo."
+            )
+        revocar_certificado(str(cert_path), inter_password, motivo)
+        return Main(
+            Article(
+                H1("Certificado revocado ✅"),
+                P(f"El certificado de ", Strong(cert_filename), " fue marcado como revocado."),
+                P("Motivo registrado: ", Code(motivo)),
+                P("El CRL fue regenerado automáticamente. Los clientes de correo "
+                  "(Outlook/Thunderbird) rechazarán las firmas hechas con este cert "
+                  "la próxima vez que validen el CRL."),
+                A("Volver al Inicio", href="/", role="button", cls="outline")
+            ),
+            cls="container"
+        )
+    except Exception as e:
+        return Main(
+            Article(
+                H1("Error al revocar ❌"),
+                Pre(str(e)),
+                A("Volver", href="/", role="button", cls="secondary")
+            ),
+            cls="container"
+        )
+
+# ==========================================
+# RUTAS DE RECUPERACIÓN ADMINISTRATIVA (KRA)
+# ==========================================
+@rt('/recuperar', methods=['POST'])
+def post_recuperar(master_password: str, cert_filename: str, new_p12_password: str):
+    try:
+        from crypto_core.escrow import recover_with_new_password
+        p12_bytes = recover_with_new_password(cert_filename, master_password, new_p12_password)
+        return Response(
+            content=p12_bytes,
+            media_type="application/x-pkcs12",
+            headers={
+                "Content-Disposition": f'attachment; filename="{cert_filename}_recovered.p12"'
+            }
+        )
+    except Exception as e:
+        return Main(
+            Article(
+                H1("Error de recuperación ❌"),
+                Pre(str(e)),
+                A("Volver", href="/", role="button", cls="secondary")
+            ),
+            cls="container"
+        )
+
+@rt('/escrow_audit')
+def get_escrow_audit():
+    from crypto_core.escrow import read_audit_log
+    return Main(
+        Article(
+            H1("Log de Recuperaciones (KRA)"),
+            P("Registro inmutable de cada recuperación administrativa realizada."),
+            Pre(Code(read_audit_log())),
+            A("Volver", href="/", role="button", cls="outline")
+        ),
+        cls="container"
+    )
 
 if __name__ == '__main__':
     #serve(port=5001)

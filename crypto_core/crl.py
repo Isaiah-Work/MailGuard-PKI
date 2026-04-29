@@ -18,16 +18,36 @@ def run(cmd):
     return result
 
 
-def revocar_certificado(cert_path: str, inter_password: str):
+VALID_REASONS = {
+    "unspecified",
+    "keyCompromise",
+    "affiliationChanged",
+    "superseded",
+    "cessationOfOperation",
+    "certificateHold",
+}
+
+
+def revocar_certificado(cert_path: str, inter_password: str, motivo: str = "unspecified"):
     """
     Marca un certificado como revocado en la base de datos de la CA
     y regenera el CRL para que la revocacion sea visible inmediatamente
     a los clientes que consulten el endpoint publico.
+
+    motivo: valor de CRLReason (RFC 5280 §5.3.1). Validos para S/MIME:
+            unspecified, keyCompromise, affiliationChanged, superseded,
+            cessationOfOperation, certificateHold.
     """
+    if motivo not in VALID_REASONS:
+        raise ValueError(
+            f"Motivo invalido: {motivo!r}. Validos: {sorted(VALID_REASONS)}"
+        )
+
     run([
         "openssl", "ca",
         "-config", str(CNF_PATH),
         "-revoke", cert_path,
+        "-crl_reason", motivo,
         "-keyfile", str(DIR_INTER / "inter-ca.key"),
         "-cert", str(DIR_INTER / "inter-ca.crt"),
         "-passin", f"pass:{inter_password}",
