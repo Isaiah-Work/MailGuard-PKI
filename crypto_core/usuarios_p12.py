@@ -187,9 +187,6 @@ def generate_user_p12(usuario, inter_password=None, p12_password_web=None, maste
         "-out", str(user_p12_path)
     ])
 
-    pass_txt_path = OUTPUT_DIR / f"{filename}_password.txt"
-    pass_txt_path.write_text(p12_password)
-
     # ── 4b. Guardar copia en escrow administrativo (KRA) ──
     if master_password:
         from crypto_core.escrow import store_escrow

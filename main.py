@@ -99,6 +99,8 @@ def get():
             A("Panel de Administración", href="/admin", role="button", cls="contrast"),
             " ",
             A("Solicitar mi certificado", href="/solicitar", role="button", cls="outline"),
+            " ",
+            A("Guía Thunderbird", href="/guia_thunderbird", role="button", cls="outline"),
             Details(
                 Summary("Ver Cumplimiento de Estándares IETF (RFCs aplicados)"),
                 P("Toda la arquitectura y criptografía de esta PKI opera bajo las siguientes especificaciones formales de la IETF:"),
@@ -529,17 +531,28 @@ def post_solicitar(req, email: str, user_password: str, p12_password: str):
         return Main(
             Article(
                 H1("Certificado emitido ✅"),
-                P(f"Bienvenido, ", Strong(usuario["nombre"]), "."),
-                P("Tu archivo PKCS#12 está listo para descargarse:"),
-                A("📥 Descargar mi .p12", href=f"/descargar/{usuario['filename']}",
+                P("Bienvenido, ", Strong(usuario["nombre"]), "."),
+                P("Tu identidad S/MIME está lista. Recomendamos descargar el ",
+                  Strong("bundle ZIP para Thunderbird"),
+                  " (incluye Root CA, tu .p12, e instrucciones paso a paso):"),
+                A("📦 Descargar bundle Thunderbird", href=f"/descargar_bundle/{usuario['filename']}",
                   role="button", cls="contrast"),
+                Br(), Br(),
+                P(Small("Si prefieres descargar piezas por separado:")),
+                A("Solo .p12", href=f"/descargar/{usuario['filename']}",
+                  role="button", cls="outline"),
+                " ",
+                A("Solo Root CA", href="/descargar_root",
+                  role="button", cls="outline"),
+                Br(), Br(),
+                A("Ver guía paso a paso para Thunderbird →", href="/guia_thunderbird"),
                 Br(), Br(),
                 P(Small(
                     "⚠ Recuerda la contraseña que elegiste para el .p12 — "
-                    "la necesitarás al importarlo en Outlook/Thunderbird/Apple Mail. "
+                    "la necesitarás al importarlo en Thunderbird. "
                     "Si la olvidas, el admin puede generarte uno nuevo desde el módulo KRA."
                 )),
-                A("Volver al inicio", href="/", role="button", cls="outline")
+                A("Volver al inicio", href="/", role="button", cls="secondary")
             ),
             cls="container"
         )
@@ -561,41 +574,48 @@ def post_solicitar(req, email: str, user_password: str, p12_password: str):
 def get_vista():
     DIR_USUARIOS = Path("usuarios_p12_output")
     tarjetas_usuarios = []
-    
+
     if DIR_USUARIOS.exists():
-        for txt_file in DIR_USUARIOS.glob("*_password.txt"):
-            nombre_base = txt_file.name.replace("_password.txt", "")
-            
-            # Leemos todo el contenido del archivo .txt generado en el Paso 3
-            texto_completo = txt_file.read_text().strip()
-            
+        for p12_file in sorted(DIR_USUARIOS.glob("*.p12")):
+            nombre_base = p12_file.stem
+
             tarjetas_usuarios.append(
                 Article(
                     H3(f"Certificado de: {nombre_base}"),
-                    P("Cofre PKCS#12 listo para instalar en clientes de correo (Outlook/Thunderbird)."),
-                    
-                    # --- EL BOTÓN MÁGICO DE DESCARGA ---
-                    A("📥 Descargar Certificado (.p12)", href=f"/descargar/{nombre_base}", role="button", cls="primary"),
-                    
+                    P("Cofre PKCS#12 listo para instalar en Thunderbird."),
+
+                    A("📦 Bundle Thunderbird (recomendado)",
+                      href=f"/descargar_bundle/{nombre_base}",
+                      role="button", cls="contrast"),
                     Br(), Br(),
-                    
-                    # Ocultamos el texto de la contraseña en un acordeón por estética
-                    Details(
-                        Summary("Ver instrucciones y contraseña de instalación"),
-                        Pre(Code(texto_completo))
-                    )
+                    A("Solo .p12", href=f"/descargar/{nombre_base}",
+                      role="button", cls="outline"),
+                    " ",
+                    A("Solo Root CA", href="/descargar_root",
+                      role="button", cls="outline"),
                 )
             )
 
     if not tarjetas_usuarios:
-        tarjetas_usuarios = [P("Aún no hay certificados generados. Ejecuta el Paso 3 primero.")]
+        tarjetas_usuarios = [
+            P("Aún no hay certificados emitidos. Los usuarios pueden solicitar el suyo en ",
+              A("/solicitar", href="/solicitar"), ".")
+        ]
 
     return Main(
-        H1("Portal de Usuarios (Etapa 4)"),
-        P("Descarga tu identidad criptográfica y las instrucciones para configurar Outlook."),
+        H1("Portal de Usuarios"),
+        P("Descarga tu identidad criptográfica y la guía de instalación para Thunderbird."),
+        Article(
+            H4("Antes de empezar"),
+            P("Necesitas instalar la Root CA y tu .p12 en Thunderbird. La forma más simple "
+              "es descargar el bundle ZIP de tu cuenta y seguir la guía:"),
+            A("📥 Descargar solo Root CA", href="/descargar_root", role="button", cls="outline"),
+            " ",
+            A("Ver guía Thunderbird →", href="/guia_thunderbird", role="button", cls="outline"),
+        ),
         *tarjetas_usuarios,
         Br(),
-        A("Volver a Administración", href="/", role="button", cls="secondary"),
+        A("Volver al inicio", href="/", role="button", cls="secondary"),
         cls="container"
     )
 
@@ -616,6 +636,137 @@ def get_descarga(nombre_base: str):
         )
     else:
         return "Archivo no encontrado", 404
+
+# Endpoint público que sirve la Root CA para que los clientes de correo
+# (Thunderbird) puedan agregarla a su almacén de Authorities y confiar en
+# los certificados emitidos por esta PKI.
+@rt('/descargar_root')
+def get_descargar_root():
+    root_path = Path("root_ca_output/root.crt")
+    if root_path.exists():
+        return FileResponse(
+            path=root_path,
+            filename="MailGuard-RootCA.crt",
+            media_type="application/x-x509-ca-cert"
+        )
+    return "Root CA no disponible. Ejecuta el Paso 1.", 404
+
+
+# Bundle ZIP listo para Thunderbird: Root CA + .p12 + INSTRUCCIONES.txt.
+# Reduce la fricción de instalación a un solo download.
+@rt('/descargar_bundle/{filename}')
+def get_descargar_bundle(filename: str):
+    try:
+        from crypto_core.bundle import build_thunderbird_bundle
+        zip_bytes = build_thunderbird_bundle(filename)
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}_thunderbird.zip"'
+            }
+        )
+    except FileNotFoundError as e:
+        return Main(
+            Article(
+                H1("Bundle no disponible ❌"),
+                Pre(str(e)),
+                A("Volver", href="/", role="button", cls="secondary")
+            ),
+            cls="container"
+        )
+
+
+# Guía paso a paso para Thunderbird (única página, 4 pasos).
+@rt('/guia_thunderbird')
+def get_guia_thunderbird():
+    return Main(
+        H1("Guía de instalación — Thunderbird"),
+        P("Tu identidad S/MIME consta de dos archivos:"),
+        Ul(
+            Li(Strong("MailGuard-RootCA.crt"), " — certificado raíz de Universidad Anáhuac (para que Thunderbird confíe en la cadena)."),
+            Li(Strong("{filename}.p12"), " — tu cofre personal (clave privada + cert)."),
+        ),
+        P("Lo más fácil: descarga el ", Strong("bundle ZIP"),
+          " desde tu vista de usuario y descomprímelo. Luego sigue los 4 pasos:"),
+
+        Article(
+            H2("Paso 1: Importar la Root CA en Thunderbird"),
+            P(Small("Thunderbird tiene su propio almacén de certificados, separado del SO.")),
+            Ol(
+                Li("Abre Thunderbird."),
+                Li("Menú hamburguesa → ", Code("Settings"), "."),
+                Li("Barra lateral → ", Code("Privacy & Security"), "."),
+                Li("Scroll hasta ", Code("Certificates"), " → ", Code("Manage Certificates..."), "."),
+                Li("Pestaña ", Strong("Authorities"), "."),
+                Li(Code("Import..."), " → selecciona ", Code("MailGuard-RootCA.crt"), "."),
+                Li("Marca ", Strong("[x] Trust this CA to identify email users"), "."),
+                Li("Click ", Code("OK"), "."),
+            )
+        ),
+
+        Article(
+            H2("Paso 2: Importar tu certificado personal (.p12)"),
+            Ol(
+                Li("Misma ventana ", Code("Manage Certificates"), "."),
+                Li("Pestaña ", Strong("Your Certificates"), "."),
+                Li(Code("Import..."), " → selecciona tu archivo ", Code(".p12"), "."),
+                Li("Ingresa la contraseña del ", Code(".p12"), " que elegiste al solicitarlo."),
+                Li("Click ", Code("OK"), "."),
+            ),
+            P(Small("Si olvidaste la contraseña, el admin puede emitir un cofre nuevo desde el módulo KRA sin re-emitir el cert."))
+        ),
+
+        Article(
+            H2("Paso 3: Vincular el certificado a tu cuenta"),
+            P(Strong("⚠ Thunderbird no vincula el cert automáticamente."), " Hazlo manualmente:"),
+            Ol(
+                Li("Menú hamburguesa → ", Code("Account Settings"), "."),
+                Li("Selecciona tu cuenta ", Code("@anahuac.mx"), "."),
+                Li("Submenú ", Code("End-To-End Encryption"), "."),
+                Li("Sección ", Strong("S/MIME"), ":",
+                   Ul(
+                       Li(Code("Personal certificate for digital signing"), " → ", Code("Select..."), " → tu cert."),
+                       Li(Code("Personal certificate for encryption"), " → ", Code("Select..."), " → el ", Strong("mismo"), " cert."),
+                   )),
+                Li("Marca ", Strong("[x] Sign messages by default"), "."),
+            )
+        ),
+
+        Article(
+            H2("Paso 4: Enviar un correo firmado"),
+            Ol(
+                Li("Compose (botón de nuevo correo)."),
+                Li("Escribe el correo."),
+                Li("Toolbar superior: icono ", Code("Security"), " → marca ", Strong("[x] Digitally Sign This Message"), "."),
+                Li("Send."),
+            ),
+            P("El destinatario verá un sello indicando que la firma es válida.")
+        ),
+
+        Article(
+            H2("Resolución de problemas"),
+            Ul(
+                Li(Strong("\"El certificado no es de confianza\""),
+                   " — no importaste la Root CA en Thunderbird (Paso 1)."),
+                Li(Strong("\"No se ha configurado certificado para firmar\""),
+                   " — no vinculaste el cert a la cuenta (Paso 3)."),
+                Li(Strong("Destinatario no puede descifrar"),
+                   " — necesita instalar la Root CA en SU Thunderbird (Paso 1) o conocer tu cert público."),
+                Li(Strong("Olvidé la contraseña del .p12"),
+                   " — contacta al admin; el módulo KRA genera un cofre nuevo con password fresca."),
+            )
+        ),
+
+        Br(),
+        A("📥 Descargar Root CA", href="/descargar_root", role="button"),
+        " ",
+        A("Solicitar mi certificado", href="/solicitar", role="button", cls="contrast"),
+        " ",
+        A("Volver al inicio", href="/", role="button", cls="secondary"),
+        cls="container"
+    )
+
 
 # Endpoint público que sirve el CRL referenciado por la extensión
 # crlDistributionPoints embebida en cada certificado de usuario.
