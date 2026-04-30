@@ -248,6 +248,34 @@ def post_inter(root_password: str, inter_password: str, master_password: str):
 # El admin enrola usuarios en /admin (RA) y desbloquea la CA con sus passwords.
 # Los usuarios se auto-sirven en /solicitar (autenticando contra la RA).
 
+def _expiry_banner():
+    """Banner de alertas de expiracion para mostrar en /admin."""
+    s = ra.expiry_summary()
+    if s["total_active"] == 0:
+        return ""
+    if s["expired"] == 0 and s["urgent"] == 0 and s["warning"] == 0 and s["notice"] == 0:
+        return Article(
+            P("✅ Todos los certs activos están vigentes (>30 días). Total: ",
+              Strong(str(s["total_active"])), ".")
+        )
+    return Article(
+        H4("⚠ Atención: hay certificados próximos a expirar"),
+        Ul(
+            Li("🔴 Ya expirados: ", Strong(str(s["expired"]))),
+            Li("🔴 Vencen en <7 días: ", Strong(str(s["urgent"]))),
+            Li("🟠 Vencen en <15 días: ", Strong(str(s["warning"]))),
+            Li("🟡 Vencen en <30 días: ", Strong(str(s["notice"]))),
+            Li("🟢 Más de 30 días: ", Strong(str(s["ok"]))),
+        ),
+        Form(
+            Label("Tu password de admin:",
+                Input(type="password", name="admin_password", required=True)),
+            Button("Ver dashboard de expiraciones", type="submit", cls="contrast"),
+            action="/admin/expiraciones", method="post"
+        ),
+    )
+
+
 @rt('/admin')
 def get_admin():
     estado = "Desbloqueada ✅" if ra.is_unlocked() else "Bloqueada 🔒"
@@ -258,6 +286,8 @@ def get_admin():
         H1("Panel de Administración (RA)"),
         P(Small("Operaciones que solo el admin puede realizar: desbloquear la CA, "
                 "enrolar usuarios y consultar el padrón de identidades.")),
+
+        _expiry_banner(),
 
         Article(
             H2("Estado de la CA"),
@@ -444,6 +474,76 @@ def post_admin_usuarios(admin_password: str):
     )
 
 
+@rt('/admin/expiraciones', methods=['POST'])
+def post_admin_expiraciones(admin_password: str):
+    if not ra.verify_admin(admin_password):
+        return _admin_error("Admin password incorrecto.")
+
+    emisiones = ra.list_emissions_with_status()
+    if not emisiones:
+        return Main(
+            Article(
+                H1("Dashboard de expiraciones"),
+                P("Aún no se ha emitido ningún certificado."),
+                A("Volver al panel", href="/admin", role="button", cls="outline")
+            ),
+            cls="container"
+        )
+
+    # Marcadores visuales por clase
+    icons = {
+        "ok": "🟢", "notice": "🟡", "warning": "🟠",
+        "urgent": "🔴", "expired": "⚫", "unknown": "❔",
+    }
+
+    filas = [Tr(
+        Th(""), Th("ID"), Th("Email"), Th("Filename"),
+        Th("Días restantes"), Th("Vence"), Th("Status"), Th("Serial"), Th("Acciones")
+    )]
+    for e in emisiones:
+        days = e["days_remaining"]
+        days_str = "—" if days is None else (
+            f"{days} días" if days >= 0 else f"vencido hace {-days} días"
+        )
+        accion = (
+            A("Revocar", href=f"#revocar-{e['filename']}", role="button", cls="secondary")
+            if e["status"] == "active"
+            else "—"
+        )
+        filas.append(Tr(
+            Td(icons.get(e["expiry_class"], "?")),
+            Td(str(e["id"])),
+            Td(e["email"]),
+            Td(Code(e["filename"])),
+            Td(days_str),
+            Td((e["expires_at"] or "—")[:10]),
+            Td(e["status"]),
+            Td(Code(e["serial"] or "—")),
+            Td(accion),
+        ))
+
+    return Main(
+        H1("Dashboard de expiraciones"),
+        P(Small(
+            "🟢 OK (>30d) · 🟡 Aviso (<30d) · 🟠 Atención (<15d) · 🔴 Urgente (<7d) · ⚫ Expirado"
+        )),
+        Table(*filas),
+        Br(),
+        Article(
+            H4("Política de certificados expirados"),
+            Ul(
+                Li("Un cert expirado deja de validarse en clientes — los correos firmados con él se ven como ", Strong("untrusted"), "."),
+                Li("Un cert ", Strong("superseded"), " no es lo mismo que ", Strong("revocado"),
+                   ": sigue siendo técnicamente válido hasta su fecha de expiración natural."),
+                Li("Para revocar formalmente, usa el formulario de revocación en la home (Paso 4). El CRL se actualiza automáticamente."),
+                Li("Para renovar, el usuario solicita su cert nuevamente en ", Code("/solicitar"), ". Es ", Strong("re-key"), ": nueva clave + nuevo serial.")
+            )
+        ),
+        A("Volver al panel", href="/admin", role="button", cls="outline"),
+        cls="container"
+    )
+
+
 @rt('/admin/emisiones', methods=['POST'])
 def post_admin_emisiones(admin_password: str):
     if not ra.verify_admin(admin_password):
@@ -489,6 +589,11 @@ def get_solicitar():
         H1("Solicitar mi certificado S/MIME"),
         P("Si fuiste pre-registrado por el administrador, autenticate con tu email "
           "institucional y tu password personal para emitir tu certificado."),
+        P(Small(
+            "Si ya tienes un certificado y lo solicitas de nuevo, se trata como "
+            "una renovación: se emite uno nuevo y el anterior queda marcado como "
+            Code("superseded"), " (no revocado automáticamente)."
+        )),
         estado_msg,
         Article(
             Form(
@@ -498,7 +603,7 @@ def get_solicitar():
                     Input(type="password", name="user_password", required=True)),
                 Label("Contraseña que tendrá tu archivo .p12 (tú la eliges):",
                     Input(type="password", name="p12_password", required=True, minlength="8")),
-                Button("Emitir mi certificado", type="submit"),
+                Button("Emitir / Renovar mi certificado", type="submit"),
                 action="/solicitar", method="post"
             ),
         ),
@@ -518,6 +623,10 @@ def post_solicitar(req, email: str, user_password: str, p12_password: str):
         usuario = ra.authenticate_user(email, user_password)
         inter_pw, master_pw = ra.get_session_passwords()
 
+        # Si ya hay un cert activo, esto es una renovacion (re-key).
+        prev_emission = ra.get_active_emission(usuario["id"])
+        is_renewal = prev_emission is not None
+
         usuario_dict = {
             "nombre": usuario["nombre"],
             "email": usuario["email"],
@@ -525,14 +634,44 @@ def post_solicitar(req, email: str, user_password: str, p12_password: str):
         }
         generate_user_p12(usuario_dict, inter_pw, p12_password, master_pw)
 
+        # Extraer serial + fecha de expiracion del cert recien firmado
+        cert_path = Path("usuarios_p12_output") / f"{usuario['filename']}.crt"
+        metadata = ra.extract_cert_metadata(cert_path)
+
         ip = req.client.host if req.client else None
-        ra.record_emission(usuario["id"], usuario["filename"], ip)
+        ra.record_emission(
+            usuario["id"],
+            usuario["filename"],
+            expires_at=metadata["expires_at"],
+            serial=metadata["serial"],
+            ip=ip,
+            supersedes=prev_emission["id"] if is_renewal else None,
+        )
+
+        # Banner contextual segun sea primera emision o renovacion
+        if is_renewal:
+            renewal_msg = Article(
+                P("🔄 ", Strong("Renovación detectada."),
+                  " Tu emisión anterior (#", str(prev_emission["id"]),
+                  ", serial ", Code(prev_emission.get("serial") or "—"),
+                  ") fue marcada como ", Code("superseded"), "."),
+                P(Small("El certificado anterior NO fue revocado automáticamente. "
+                        "Sigue siendo técnicamente válido hasta su expiración natural "
+                        "o hasta que el admin lo revoque manualmente. Esto te permite "
+                        "descifrar correos antiguos cifrados con tu clave anterior."))
+            )
+        else:
+            renewal_msg = ""
 
         return Main(
+            renewal_msg,
             Article(
                 H1("Certificado emitido ✅"),
                 P("Bienvenido, ", Strong(usuario["nombre"]), "."),
-                P("Tu identidad S/MIME está lista. Recomendamos descargar el ",
+                P("Tu identidad S/MIME está lista. Vence el ",
+                  Strong(metadata["expires_at"][:10]),
+                  " (serial ", Code(metadata["serial"]), ")."),
+                P("Recomendamos descargar el ",
                   Strong("bundle ZIP para Thunderbird"),
                   " (incluye Root CA, tu .p12, e instrucciones paso a paso):"),
                 A("📦 Descargar bundle Thunderbird", href=f"/descargar_bundle/{usuario['filename']}",

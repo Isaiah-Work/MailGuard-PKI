@@ -20,10 +20,11 @@ import hashlib
 import re
 import secrets
 import sqlite3
-from datetime import datetime
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
-from crypto_core.config import ADMIN_PASSWORD, RA_DB_PATH
+from crypto_core.config import ADMIN_PASSWORD, EXPIRY_THRESHOLDS_DAYS, RA_DB_PATH
 
 # Parametros de scrypt -- recomendados por OWASP para password hashing.
 SCRYPT_N = 2 ** 14   # CPU/memoria
@@ -47,7 +48,7 @@ def _connect():
 
 
 def init_db():
-    """Crea las tablas si no existen. Idempotente."""
+    """Crea las tablas si no existen. Idempotente. Tambien aplica migraciones."""
     conn = _connect()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS usuarios (
@@ -74,6 +75,18 @@ def init_db():
             FOREIGN KEY(user_id) REFERENCES usuarios(id)
         );
     """)
+
+    # Migraciones para soporte de expiracion / renovacion.
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(cert_emissions)").fetchall()]
+    if "expires_at" not in cols:
+        conn.execute("ALTER TABLE cert_emissions ADD COLUMN expires_at TEXT")
+    if "serial" not in cols:
+        conn.execute("ALTER TABLE cert_emissions ADD COLUMN serial TEXT")
+    if "status" not in cols:
+        conn.execute("ALTER TABLE cert_emissions ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+    if "superseded_by" not in cols:
+        conn.execute("ALTER TABLE cert_emissions ADD COLUMN superseded_by INTEGER")
+
     conn.commit()
     conn.close()
 
@@ -293,17 +306,172 @@ def authenticate_user(email: str, user_password: str) -> dict:
         conn.close()
 
 
-def record_emission(user_id: int, filename: str, ip: str | None = None):
+def record_emission(
+    user_id: int,
+    filename: str,
+    expires_at: str | None = None,
+    serial: str | None = None,
+    ip: str | None = None,
+    supersedes: int | None = None,
+) -> int:
+    """
+    Registra una emision en la bitacora.
+
+    Si supersedes es el ID de una emision previa, esa emision queda marcada
+    con status='superseded' y superseded_by apuntando a la emision nueva.
+    Devuelve el ID de la nueva emision.
+    """
     init_db()
     conn = _connect()
     try:
-        conn.execute(
+        cur = conn.execute(
             """
-            INSERT INTO cert_emissions (user_id, issued_at, issued_ip, filename)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO cert_emissions
+                (user_id, issued_at, issued_ip, filename, expires_at, serial, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'active')
             """,
-            (user_id, datetime.utcnow().isoformat() + "Z", ip, filename),
+            (
+                user_id,
+                datetime.utcnow().isoformat() + "Z",
+                ip,
+                filename,
+                expires_at,
+                serial,
+            ),
         )
+        new_id = cur.lastrowid
+
+        if supersedes is not None:
+            conn.execute(
+                """
+                UPDATE cert_emissions
+                SET status = 'superseded', superseded_by = ?
+                WHERE id = ?
+                """,
+                (new_id, supersedes),
+            )
+
         conn.commit()
+        return new_id
     finally:
         conn.close()
+
+
+# ──────────────────────────────────────────────────────────
+#  Expiracion y renovacion
+# ──────────────────────────────────────────────────────────
+def extract_cert_metadata(cert_path: Path | str) -> dict:
+    """Lee un cert X.509 (PEM) y extrae su serial y fecha de expiracion."""
+    cert_path = str(cert_path)
+
+    serial_out = subprocess.run(
+        ["openssl", "x509", "-in", cert_path, "-noout", "-serial"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    serial = serial_out.split("=", 1)[1].strip()
+
+    enddate_out = subprocess.run(
+        ["openssl", "x509", "-in", cert_path, "-noout", "-enddate"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    raw = enddate_out.split("=", 1)[1].strip()  # "Apr 29 14:00:00 2027 GMT"
+    no_tz = raw.rsplit(" ", 1)[0]
+    dt = datetime.strptime(no_tz, "%b %d %H:%M:%S %Y").replace(tzinfo=timezone.utc)
+
+    return {"serial": serial, "expires_at": dt.isoformat()}
+
+
+def days_until(expires_at_iso: str | None) -> int | None:
+    """Dias restantes hasta la expiracion. Negativo si ya expiro. None si desconocido."""
+    if not expires_at_iso:
+        return None
+    expires = datetime.fromisoformat(expires_at_iso.replace("Z", "+00:00"))
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    return (expires - datetime.now(timezone.utc)).days
+
+
+def expiry_class(expires_at_iso: str | None) -> str:
+    """
+    Clasifica un cert por su urgencia de expiracion:
+      'expired' (ya vencio), 'urgent' (<7d), 'warning' (<15d),
+      'notice' (<30d), 'ok' (>=30d), 'unknown' (sin fecha).
+    """
+    days = days_until(expires_at_iso)
+    if days is None:
+        return "unknown"
+    if days < 0:
+        return "expired"
+    if days < EXPIRY_THRESHOLDS_DAYS["urgent"]:
+        return "urgent"
+    if days < EXPIRY_THRESHOLDS_DAYS["warning"]:
+        return "warning"
+    if days < EXPIRY_THRESHOLDS_DAYS["notice"]:
+        return "notice"
+    return "ok"
+
+
+def get_active_emission(user_id: int) -> dict | None:
+    """Devuelve la emision activa mas reciente del usuario, o None."""
+    init_db()
+    conn = _connect()
+    try:
+        row = conn.execute(
+            """
+            SELECT * FROM cert_emissions
+            WHERE user_id = ? AND status = 'active'
+            ORDER BY issued_at DESC
+            LIMIT 1
+            """,
+            (user_id,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_emissions_with_status() -> list[dict]:
+    """
+    Devuelve TODAS las emisiones con metadatos de usuario y clase de expiracion.
+    Ordenado por urgencia (las que vencen pronto primero).
+    """
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT e.id, e.issued_at, e.issued_ip, e.filename,
+                   e.expires_at, e.serial, e.status, e.superseded_by,
+                   u.email, u.nombre
+            FROM cert_emissions e
+            JOIN usuarios u ON u.id = e.user_id
+            ORDER BY (e.expires_at IS NULL), e.expires_at ASC
+            """
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["expiry_class"] = expiry_class(d.get("expires_at"))
+            d["days_remaining"] = days_until(d.get("expires_at"))
+            result.append(d)
+        return result
+    finally:
+        conn.close()
+
+
+def expiry_summary() -> dict:
+    """Conteos por clase de expiracion sobre las emisiones con status='active'."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT expires_at FROM cert_emissions WHERE status = 'active'"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    summary = {"ok": 0, "notice": 0, "warning": 0, "urgent": 0, "expired": 0, "unknown": 0}
+    for r in rows:
+        summary[expiry_class(r["expires_at"])] += 1
+    summary["total_active"] = sum(summary.values())
+    return summary

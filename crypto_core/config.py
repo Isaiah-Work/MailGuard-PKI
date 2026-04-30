@@ -25,3 +25,11 @@ ORG_DEFAULTS = {
     "locality": "Huixquilucan",
     "org":      "Universidad Anahuac",
 }
+
+# Umbrales (en dias) para clasificar la urgencia de expiracion de un cert.
+# Cualquier cert por encima del mayor umbral se considera "ok" (verde).
+EXPIRY_THRESHOLDS_DAYS = {
+    "urgent":  7,    # rojo: vence en menos de 7 dias
+    "warning": 15,   # naranja: vence en 7-15 dias
+    "notice":  30,   # amarillo: vence en 15-30 dias
+}
