@@ -276,6 +276,34 @@ def _expiry_banner():
     )
 
 
+def _validation_banner():
+    """Banner de fallas de validacion (Puntos 16 y 17)."""
+    s = ra.count_validation_failures()
+    if s["total_active"] == 0:
+        return ""
+    if s["fail"] == 0 and s["warning"] == 0:
+        return Article(
+            P("✅ Todos los certs activos pasaron validación de cadena. "
+              "(", Strong(str(s["pass"])), " ok, ",
+              Strong(str(s["unchecked"])), " sin validar)")
+        )
+    return Article(
+        H4("⚠ Hay certificados con problemas de validación de cadena"),
+        Ul(
+            Li("❌ Fallas críticas: ", Strong(str(s["fail"]))),
+            Li("🟡 Advertencias: ", Strong(str(s["warning"]))),
+            Li("✅ Pasaron: ", Strong(str(s["pass"]))),
+            Li("⏭ Sin validar: ", Strong(str(s["unchecked"]))),
+        ),
+        Form(
+            Label("Tu password de admin:",
+                Input(type="password", name="admin_password", required=True)),
+            Button("Re-validar todos los certs", type="submit", cls="contrast"),
+            action="/admin/validacion_global", method="post"
+        ),
+    )
+
+
 @rt('/admin')
 def get_admin():
     estado = "Desbloqueada ✅" if ra.is_unlocked() else "Bloqueada 🔒"
@@ -288,6 +316,7 @@ def get_admin():
                 "enrolar usuarios y consultar el padrón de identidades.")),
 
         _expiry_banner(),
+        _validation_banner(),
 
         Article(
             H2("Estado de la CA"),
@@ -639,7 +668,7 @@ def post_solicitar(req, email: str, user_password: str, p12_password: str):
         metadata = ra.extract_cert_metadata(cert_path)
 
         ip = req.client.host if req.client else None
-        ra.record_emission(
+        new_emission_id = ra.record_emission(
             usuario["id"],
             usuario["filename"],
             expires_at=metadata["expires_at"],
@@ -647,6 +676,14 @@ def post_solicitar(req, email: str, user_password: str, p12_password: str):
             ip=ip,
             supersedes=prev_emission["id"] if is_renewal else None,
         )
+
+        # Validacion automatica post-emision (Puntos 16 y 17)
+        from crypto_core.validation import validate_user_cert
+        validation_report = validate_user_cert(usuario["filename"], p12_password)
+        ra.update_validation_status(new_emission_id, validation_report["overall"])
+        if validation_report["overall"] == "fail":
+            print(f"[ALERTA] Cert {usuario['filename']} fallo validacion: "
+                  f"{validation_report['summary']}")
 
         # Banner contextual segun sea primera emision o renovacion
         if is_renewal:
@@ -685,7 +722,15 @@ def post_solicitar(req, email: str, user_password: str, p12_password: str):
                   role="button", cls="outline"),
                 Br(), Br(),
                 A("Ver guía paso a paso para Thunderbird →", href="/guia_thunderbird"),
+                Br(),
+                A(f"🔬 Validar mi certificado", href=f"/validar/{usuario['filename']}",
+                  role="button", cls="outline"),
                 Br(), Br(),
+                P(Small(
+                    "Resultado de validación automática: ",
+                    Strong(validation_report["overall"].upper()),
+                    f" ({validation_report['summary']['passed']}/{validation_report['summary']['total']} checks)."
+                )),
                 P(Small(
                     "⚠ Recuerda la contraseña que elegiste para el .p12 — "
                     "la necesitarás al importarlo en Thunderbird. "
@@ -775,6 +820,119 @@ def get_descarga(nombre_base: str):
         )
     else:
         return "Archivo no encontrado", 404
+
+# ==========================================
+# VALIDACION DE CADENA Y DISTRIBUCION DE INTERMEDIOS (Puntos 16 y 17)
+# ==========================================
+@rt('/validar/{filename}')
+def get_validar(filename: str):
+    from crypto_core.validation import validate_user_cert
+    report = validate_user_cert(filename)
+
+    # Iconos por estado
+    def render_check(c):
+        if c["passed"] is True:
+            icon = "✅"
+        elif c["passed"] is False:
+            icon = "🔴" if c["level"] == "critical" else "🟡"
+        else:
+            icon = "⏭"
+        return Li(
+            icon, " ", Strong(c["name"]),
+            Pre(Code(c["detail"]))
+        )
+
+    # Agrupar por nivel
+    criticos = [c for c in report["checks"] if c["level"] == "critical"]
+    warnings = [c for c in report["checks"] if c["level"] == "warning"]
+    infos = [c for c in report["checks"] if c["level"] == "info"]
+
+    overall_label = {
+        "pass": ("✅ PASS", "Todo en orden"),
+        "warning": ("🟡 WARNING", "Funciona pero con advertencias"),
+        "fail": ("❌ FAIL", "Hay fallas críticas"),
+    }.get(report["overall"], ("?", ""))
+
+    s = report["summary"]
+
+    return Main(
+        H1(f"Validación de cadena — {filename}"),
+        Article(
+            P(Strong("Estado general: "), Strong(overall_label[0])),
+            P(overall_label[1]),
+            P(
+                Code(f"{s['passed']} pasaron"), " · ",
+                Code(f"{s['failed_critical']} fallas críticas"), " · ",
+                Code(f"{s['failed_warning']} advertencias"), " · ",
+                Code(f"{s['skipped']} saltados"),
+                f" — total {s['total']}"
+            ),
+            P(Small(f"Validado: {report['timestamp']}")),
+        ),
+
+        H2(f"🔴 Críticos ({len(criticos)})"),
+        P(Small("Si alguno falla, los clientes de correo rechazan el cert.")),
+        Ul(*[render_check(c) for c in criticos]),
+
+        H2(f"🟡 Advertencias ({len(warnings)})"),
+        P(Small("No bloquean, pero conviene atender.")),
+        Ul(*[render_check(c) for c in warnings]) if warnings else P("Sin advertencias."),
+
+        H2(f"ℹ Informativos ({len(infos)})"),
+        Ul(*[render_check(c) for c in infos]) if infos else P("Sin info adicional."),
+
+        Br(),
+        A("Volver al inicio", href="/", role="button", cls="secondary"),
+        cls="container"
+    )
+
+
+@rt('/admin/validacion_global', methods=['POST'])
+def post_admin_validacion_global(admin_password: str):
+    if not ra.verify_admin(admin_password):
+        return _admin_error("Admin password incorrecto.")
+
+    from crypto_core.validation import revalidate_all_active
+    reports = revalidate_all_active()
+
+    if not reports:
+        return Main(
+            Article(
+                H1("Validación global"),
+                P("No hay certificados activos para validar."),
+                A("Volver al panel", href="/admin", role="button", cls="outline")
+            ),
+            cls="container"
+        )
+
+    icons = {"pass": "✅", "warning": "🟡", "fail": "❌"}
+
+    filas = [Tr(
+        Th(""), Th("Filename"), Th("Email"), Th("Pasaron"),
+        Th("Fallas críticas"), Th("Advertencias"), Th("Detalles")
+    )]
+    for r in reports:
+        s = r["summary"]
+        filas.append(Tr(
+            Td(icons.get(r["overall"], "?")),
+            Td(Code(r["filename"])),
+            Td(r["email"]),
+            Td(f"{s['passed']}/{s['total']}"),
+            Td(str(s["failed_critical"])),
+            Td(str(s["failed_warning"])),
+            Td(A("Ver", href=f"/validar/{r['filename']}")),
+        ))
+
+    return Main(
+        H1("Validación global de cadenas"),
+        P(Small("Re-validación completada. Los resultados quedaron cacheados en "
+                "la columna ", Code("validation_status"), " de la BD.")),
+        Table(*filas),
+        Br(),
+        A("Volver al panel", href="/admin", role="button", cls="outline"),
+        cls="container"
+    )
+
 
 # Endpoint público que sirve la Root CA para que los clientes de correo
 # (Thunderbird) puedan agregarla a su almacén de Authorities y confiar en

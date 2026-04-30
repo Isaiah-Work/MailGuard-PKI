@@ -76,7 +76,7 @@ def init_db():
         );
     """)
 
-    # Migraciones para soporte de expiracion / renovacion.
+    # Migraciones para soporte de expiracion / renovacion / validacion.
     cols = [r[1] for r in conn.execute("PRAGMA table_info(cert_emissions)").fetchall()]
     if "expires_at" not in cols:
         conn.execute("ALTER TABLE cert_emissions ADD COLUMN expires_at TEXT")
@@ -86,6 +86,10 @@ def init_db():
         conn.execute("ALTER TABLE cert_emissions ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
     if "superseded_by" not in cols:
         conn.execute("ALTER TABLE cert_emissions ADD COLUMN superseded_by INTEGER")
+    if "validation_status" not in cols:
+        conn.execute("ALTER TABLE cert_emissions ADD COLUMN validation_status TEXT DEFAULT 'unchecked'")
+    if "validation_at" not in cols:
+        conn.execute("ALTER TABLE cert_emissions ADD COLUMN validation_at TEXT")
 
     conn.commit()
     conn.close()
@@ -473,5 +477,50 @@ def expiry_summary() -> dict:
     summary = {"ok": 0, "notice": 0, "warning": 0, "urgent": 0, "expired": 0, "unknown": 0}
     for r in rows:
         summary[expiry_class(r["expires_at"])] += 1
+    summary["total_active"] = sum(summary.values())
+    return summary
+
+
+# ──────────────────────────────────────────────────────────
+#  Validacion automatica de cadenas (Punto 16-17)
+# ──────────────────────────────────────────────────────────
+def update_validation_status(emission_id: int, status: str):
+    """Marca el resultado de la ultima validacion de una emision."""
+    init_db()
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            UPDATE cert_emissions
+            SET validation_status = ?, validation_at = ?
+            WHERE id = ?
+            """,
+            (status, datetime.utcnow().isoformat() + "Z", emission_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def count_validation_failures() -> dict:
+    """Cuenta emisiones activas por estado de validacion."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT validation_status, COUNT(*) as n
+            FROM cert_emissions
+            WHERE status = 'active'
+            GROUP BY validation_status
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    summary = {"pass": 0, "warning": 0, "fail": 0, "unchecked": 0}
+    for r in rows:
+        key = r["validation_status"] or "unchecked"
+        summary[key] = summary.get(key, 0) + r["n"]
     summary["total_active"] = sum(summary.values())
     return summary
