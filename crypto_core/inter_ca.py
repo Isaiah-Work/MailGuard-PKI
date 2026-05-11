@@ -6,7 +6,6 @@ Uso: python paso2_inter_ca.py
 """
 
 import subprocess
-import sys
 from pathlib import Path
 from getpass import getpass
 

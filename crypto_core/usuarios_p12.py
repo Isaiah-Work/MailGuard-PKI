@@ -6,7 +6,6 @@ Uso: python paso3_usuarios_p12.py
 """
 
 import subprocess
-import sys
 from pathlib import Path
 from getpass import getpass
 
