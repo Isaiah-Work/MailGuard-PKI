@@ -1,0 +1,22 @@
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+dir               = ca_intermedia_output
+database          = $dir/index.txt
+crlnumber         = $dir/crlnumber
+certificate       = $dir/inter-ca.crt
+private_key       = $dir/inter-ca.key
+default_md        = sha256
+default_crl_days  = 30
+
+policy            = policy_anything
+
+[ policy_anything ]
+countryName             = optional
+stateOrProvinceName     = optional
+localityName            = optional
+organizationName        = optional
+organizationalUnitName  = optional
+commonName              = supplied
+emailAddress            = optional
