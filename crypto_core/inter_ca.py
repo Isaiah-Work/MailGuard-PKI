@@ -71,9 +71,10 @@ def generate_ca_intermedio(root_password=None, inter_password=None, master_passw
 
      # Validamos que los archivos del Paso 1 existan antes de empezar
     if not root_crt_path.exists() or not root_key_path.exists():
-        print(f"\n[ERROR] No se encontraron los archivos de la Root CA en {DIR_ROOT}")
-        print("Asegúrate de ejecutar el Paso 1 primero.")
-        sys.exit(1)
+        raise RuntimeError(
+            f"No se encontraron los archivos de la Root CA en {DIR_ROOT}.\n"
+            "Asegúrate de ejecutar el Paso 1 primero."
+        )
 
     OUTPUT_DIR.mkdir(exist_ok=True)
 

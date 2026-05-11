@@ -20,8 +20,7 @@ OUTPUT_DIR = Path("root_ca_output")
 def run(cmd):
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"\n[ERROR] {result.stderr}")
-        sys.exit(1)
+        raise RuntimeError(f"OpenSSL Error:\n{result.stderr}")
     return result
 
 def build_subject():

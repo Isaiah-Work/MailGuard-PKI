@@ -90,9 +90,10 @@ def generate_user_p12(usuario, inter_password=None, p12_password_web=None, maste
     """
     for path in [inter_crt_path, inter_key_path, chain_crt_path]:
         if not path.exists():
-            print(f"\n[ERROR] No se encontró: {path}")
-            print("Asegúrate de ejecutar los Pasos 1 y 2 primero.")
-            sys.exit(1)
+            raise RuntimeError(
+                f"No se encontró: {path}\n"
+                "Asegúrate de ejecutar los Pasos 1 y 2 primero."
+            )
 
     OUTPUT_DIR.mkdir(exist_ok=True)
 

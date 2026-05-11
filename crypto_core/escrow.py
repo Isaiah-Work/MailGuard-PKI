@@ -19,7 +19,7 @@ del usuario, lo que reduce la garantia de no-repudio. Documentar a los usuarios.
 
 import subprocess
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 DIR_INTER = Path("ca_intermedia_output")
@@ -137,7 +137,7 @@ def recover_with_new_password(
 def _audit(filename: str):
     AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
     with AUDIT_LOG.open("a", encoding="utf-8") as f:
-        f.write(f"{datetime.utcnow().isoformat()}Z\trecover\t{filename}\n")
+        f.write(f"{datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')}\trecover\t{filename}\n")
 
 
 def read_audit_log() -> str:

@@ -146,7 +146,7 @@ def admin_unlock(admin_password: str, inter_password: str, master_password: str)
 
     _session["inter"] = inter_password
     _session["master"] = master_password
-    _session["since"] = datetime.utcnow().isoformat() + "Z"
+    _session["since"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def admin_lock():
@@ -190,7 +190,7 @@ def enroll_user(
 
     salt = secrets.token_bytes(16)
     pw_hash = _hash(user_password, salt)
-    now = datetime.utcnow().isoformat() + "Z"
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     conn = _connect()
     try:
@@ -302,7 +302,7 @@ def authenticate_user(email: str, user_password: str) -> dict:
 
         conn.execute(
             "UPDATE usuarios SET failed_attempts = 0, last_request_at = ? WHERE id = ?",
-            (datetime.utcnow().isoformat() + "Z", row["id"]),
+            (datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), row["id"]),
         )
         conn.commit()
         return dict(row)
@@ -336,7 +336,7 @@ def record_emission(
             """,
             (
                 user_id,
-                datetime.utcnow().isoformat() + "Z",
+                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 ip,
                 filename,
                 expires_at,
@@ -495,7 +495,7 @@ def update_validation_status(emission_id: int, status: str):
             SET validation_status = ?, validation_at = ?
             WHERE id = ?
             """,
-            (status, datetime.utcnow().isoformat() + "Z", emission_id),
+            (status, datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), emission_id),
         )
         conn.commit()
     finally:
