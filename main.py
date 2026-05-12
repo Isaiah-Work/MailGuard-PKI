@@ -4,6 +4,7 @@ from crypto_core.root_ca import generate_root_ca
 from crypto_core.inter_ca import generate_ca_intermedio
 from crypto_core.usuarios_p12 import generate_user_p12
 from crypto_core import ra
+from crypto_core import ldap_connector
 
 # Al no pasarle argumentos, FastHTML usa Pico CSS por defecto
 app, rt = fast_app()
@@ -376,7 +377,23 @@ def get_admin():
         ),
 
         Article(
-            H2("4. Consultar padrón"),
+            H2("4. Sincronizar desde Active Directory"),
+            P(Small(
+                "Consulta el Directorio Activo de la Anahuac y enrola automaticamente "
+                "a los usuarios que existen en AD pero no en la RA. Los usuarios "
+                "existentes se actualizan si su nombre o unidad organizacional cambiaron. "
+                "Se asigna una password temporal aleatoria a cada nuevo usuario."
+            )),
+            Form(
+                Label("Tu password de admin:",
+                    Input(type="password", name="admin_password", required=True)),
+                Button("Sincronizar desde AD", type="submit", cls="secondary"),
+                action="/admin/sync_ad", method="post"
+            ),
+        ),
+
+        Article(
+            H2("5. Consultar padrón"),
             Form(
                 Label("Tu password de admin:",
                     Input(type="password", name="admin_password", required=True)),
@@ -461,6 +478,39 @@ def post_admin_enroll(
                 P(Strong("OU: "), usuario["org_unit"]),
                 P(Small("Comunica al usuario su password personal por canal seguro "
                         "(en persona, correo institucional firmado, sobre cerrado).")),
+                A("Volver al panel", href="/admin", role="button", cls="outline")
+            ),
+            cls="container"
+        )
+    except Exception as e:
+        return _admin_error(e)
+
+
+@rt('/admin/sync_ad', methods=['POST'])
+def post_admin_sync_ad(admin_password: str):
+    if not ra.verify_admin(admin_password):
+        return _admin_error("Admin password incorrecto.")
+    try:
+        resumen = ldap_connector.sync_ad_to_ra(dry_run=False)
+
+        errores_html = ""
+        if resumen["errors"]:
+            errores_html = Ul(
+                *[Li(Code(str(err))) for err in resumen["errors"]]
+            )
+
+        return Main(
+            Article(
+                H1("Sincronizacion AD → RA completada"),
+                P(Strong("Usuarios creados: "), str(resumen["created"])),
+                P(Strong("Usuarios actualizados: "), str(resumen["updated"])),
+                P(Strong("Usuarios omitidos: "), str(resumen["skipped"])),
+                errores_html,
+                P(Small(
+                    "Los usuarios nuevos recibieron una password temporal aleatoria. "
+                    "Comunica cada password al usuario por canal seguro. "
+                    "El usuario podra solicitar su certificado en /solicitar."
+                )),
                 A("Volver al panel", href="/admin", role="button", cls="outline")
             ),
             cls="container"

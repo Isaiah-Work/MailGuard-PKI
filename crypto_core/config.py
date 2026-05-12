@@ -3,6 +3,7 @@ Configuración central de MailGuard PKI.
 Modifica aquí los valores que aplican a todo el proyecto.
 """
 
+import os
 from pathlib import Path
 
 # URL pública desde donde los clientes de correo descargan el CRL.
@@ -24,6 +25,28 @@ ORG_DEFAULTS = {
     "state":    "Estado de Mexico",
     "locality": "Huixquilucan",
     "org":      "Universidad Anahuac",
+}
+
+# ──────────────────────────────────────────────────────────
+#  Active Directory (sincronizacion batch — Modo A)
+# ──────────────────────────────────────────────────────────
+# Credenciales de la cuenta de servicio que consulta el DC de la Anahuac.
+# AD_PASSWORD debe venir de variable de entorno; el valor aqui es un placeholder
+# que se pisa en produccion.
+AD_CONFIG = {
+    "enabled":       False,
+    "server":        "ldap://dc.anahuac.mx",
+    "base_dn":       "DC=anahuac,DC=mx",
+    "user_dn":       "CN=svc_mailguard,OU=ServiceAccounts,DC=anahuac,DC=mx",
+    "password":      os.environ.get("AD_PASSWORD"),
+    "domain_suffix": "anahuac.mx",
+    # Filtro LDAP que selecciona los usuarios a sincronizar.
+    # Ajustar el memberOf segun la estructura de grupos de la Anahuac.
+    "user_filter": (
+        "(&(objectClass=user)"
+        "(mail=*@anahuac.mx)"
+        "(memberOf=CN=Alumnos,OU=Groups,DC=anahuac,DC=mx))"
+    ),
 }
 
 # Umbrales (en dias) para clasificar la urgencia de expiracion de un cert.

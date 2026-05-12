@@ -91,6 +91,11 @@ def init_db():
     if "validation_at" not in cols:
         conn.execute("ALTER TABLE cert_emissions ADD COLUMN validation_at TEXT")
 
+    # Migracion: trazabilidad AD
+    cols_usuarios = [r[1] for r in conn.execute("PRAGMA table_info(usuarios)").fetchall()]
+    if "ad_guid" not in cols_usuarios:
+        conn.execute("ALTER TABLE usuarios ADD COLUMN ad_guid TEXT")
+
     conn.commit()
     conn.close()
 
