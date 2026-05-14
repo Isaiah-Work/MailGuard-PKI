@@ -670,7 +670,7 @@ def get_solicitar():
           "institucional y tu password personal para emitir tu certificado."),
         P(Small(
             "Si ya tienes un certificado y lo solicitas de nuevo, se trata como "
-            "una renovación: se emite uno nuevo y el anterior queda marcado como "
+            "una renovación: se emite uno nuevo y el anterior queda marcado como ",
             Code("superseded"), " (no revocado automáticamente)."
         )),
         estado_msg,
