@@ -21,6 +21,7 @@ RUN pip install --upgrade pip && \
 
 # Copiar código fuente
 COPY main.py .
+COPY static/ ./static/
 COPY crypto_core/ ./crypto_core/
 
 # Crear directorios de salida

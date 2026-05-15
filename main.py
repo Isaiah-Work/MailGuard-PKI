@@ -48,7 +48,7 @@ hdrs = (
 )
 
 # Al pasar pico=False y nuestros hdrs, desactivamos Pico CSS
-app, rt = fast_app(pico=False, hdrs=hdrs)
+app, rt = fast_app(pico=False, hdrs=hdrs, static_path='static')
 
 # Helpers de UI Académica
 def Layout(*args, title="MailGuard PKI", **kwargs):
@@ -56,7 +56,7 @@ def Layout(*args, title="MailGuard PKI", **kwargs):
         Header(
             Div(
                 # Logo posicionado en la esquina superior derecha
-                Img(src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Logo_An%C3%A1huac.svg/512px-Logo_An%C3%A1huac.svg.png", 
+                Img(src="Logo_Universidad_Anáhuac.svg.png", 
                     alt="Logo Anáhuac", cls="absolute top-6 right-8 h-20 drop-shadow-sm opacity-90"),
                 
                 # Contenido central
@@ -142,6 +142,11 @@ def get_admin():
         H1("Panel de Administración de la RA", cls="text-4xl font-serif font-black text-charcoal mb-4"),
         P("Gestión centralizada de identidades y supervisión de certificados.", cls="mb-12 text-gray-600 font-medium text-lg"),
 
+        TechNote("Autoridad de Registro (RA)", 
+                 "La RA actúa como el filtro de validación de identidades (Punto 9 del reporte). "
+                 "Digitaliza el proceso de verificación asegurando que solo usuarios con correos institucionales "
+                 "activos (@anahuac.mx) puedan enrolarse en el padrón de confianza."),
+
         Div(
             _expiry_banner(),
             _validation_banner(),
@@ -190,6 +195,12 @@ def get_admin():
         # Gestión de Usuarios y Sincronización
         Div(
             H2("Gestión de Identidades", cls="text-3xl font-serif font-black text-charcoal mb-8 text-center"),
+            
+            TechNote("Sincronización Institucional", 
+                     "El sistema integra conectividad con Active Directory / LDAP (Punto 76 del reporte). "
+                     "Esto garantiza la simetría estructural entre la jerarquía de la universidad y la PKI, "
+                     "automatizando el enrolamiento masivo de la comunidad universitaria."),
+
             Div(
                 # Enrolamiento
                 Div(
@@ -246,6 +257,14 @@ def get_admin():
         title="Admin Portal"
     )
 
+# Componente de Documentación Técnica
+def TechNote(title, content):
+    return Div(
+        H4(f"📘 Nota Técnica: {title}", cls="text-sm font-black text-anahuac mb-2 uppercase tracking-tight"),
+        P(content, cls="text-xs text-gray-600 leading-relaxed"),
+        cls="bg-orange-50/50 border-l-4 border-anahuac p-4 rounded-r-lg my-6 shadow-sm"
+    )
+
 @rt('/root_ca')
 def get_root_ca():
     return Layout(
@@ -254,6 +273,11 @@ def get_root_ca():
             H2("Configuración de la Root CA", cls="text-4xl font-serif font-black text-charcoal mb-6"),
             P("Este proceso genera la clave privada RSA-4096 y el certificado raíz autofirmado institucional.", cls="text-lg text-gray-600 mb-10"),
             
+            TechNote("Jerarquía y Seguridad", 
+                     "La Root CA actúa como el ancla de confianza (Trust Anchor). Según el diseño de arquitectura (Punto 3 del reporte), "
+                     "debe mantenerse estrictamente offline para proteger la integridad total del sistema. "
+                     "Utiliza el estándar RSA con 4096 bits para garantizar una vida útil de al menos 10 años."),
+
             Div(
                 Form(
                     Div(
@@ -271,7 +295,13 @@ def get_root_ca():
                 Details(
                     Summary("🔍 Especificaciones Técnicas (Auditoría)", cls="cursor-pointer font-bold text-anahuac hover:underline mt-12"),
                     Div(
-                        P("Algoritmo: RSA 4096 bits. Cifrado de llave: AES-256-CBC.", cls="mt-6 mb-4 font-bold"),
+                        P("Implementación mediante OpenSSL (Punto 7 del reporte):", cls="mt-6 mb-4 font-bold text-charcoal"),
+                        Ul(
+                            Li(Strong("Algoritmo: "), "RSA 4096 bits (RFC 8017)"),
+                            Li(Strong("Protección: "), "Cifrado AES-256-CBC de la clave privada"),
+                            Li(Strong("Hash: "), "SHA-256 (RFC 6234)"),
+                            cls="list-disc ml-6 space-y-2 text-sm text-gray-600 mb-6"
+                        ),
                         Pre("openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -aes-256-cbc -out root-ca.key", 
                             cls="bg-gray-900 text-white p-6 rounded-xl text-xs overflow-x-auto shadow-xl"),
                         cls="p-8 bg-white mt-4 rounded-2xl border border-gray-100 shadow-inner"
@@ -291,6 +321,11 @@ def get_inter_ca():
             H2("Configuración de la CA Intermedia", cls="text-4xl font-serif font-black text-charcoal mb-6"),
             P("Vínculo entre la Raíz y los usuarios finales. Requiere la llave de la Root CA para ser firmada.", cls="text-lg text-gray-600 mb-10"),
             
+            TechNote("Operatividad y Restricciones", 
+                     "La CA Intermedia es la entidad operativa que firma los certificados de usuario. "
+                     "Como medida de control técnico (Punto 8 del reporte), se establece una restricción 'pathlen:0' "
+                     "mediante extensiones X.509, impidiendo que esta autoridad pueda emitir otras CAs."),
+
             Div(
                 Form(
                     Label("Contraseña de la Root CA:", cls="block text-sm font-bold text-gray-700 mb-2"),
@@ -321,6 +356,12 @@ def get_inter_ca():
         
         Div(
             H3("Módulo de Revocación", id="revocacion", cls="text-3xl font-serif font-black text-charcoal mt-24 mb-8"),
+            
+            TechNote("Listas de Revocación (CRL)", 
+                     "Garantiza la integridad del sistema permitiendo anular certificados (Punto 21 del reporte). "
+                     "Utiliza comandos OpenSSL para generar el archivo .crl que los clientes descargan "
+                     "para verificar la validez de las firmas en tiempo real."),
+
             Div(
                 Form(
                     Label("Contraseña de la CA Intermedia:", cls="block text-sm font-bold text-gray-700 mb-2"),
@@ -341,6 +382,12 @@ def get_inter_ca():
                 cls="card-academic max-w-2xl mx-auto"
             ),
             H3("Módulo de Recuperación (KRA)", id="kra", cls="text-3xl font-serif font-black text-charcoal mt-24 mb-8"),
+            
+            TechNote("Custodia de Claves (Key Escrow)", 
+                     "Implementa un mecanismo de respaldo seguro (Punto 43 del reporte) cifrado con AES-256-CBC. "
+                     "Permite a la administración recuperar la capacidad de descifrado de un usuario "
+                     "sin invalidar su identidad digital, protegiendo el acceso a correos históricos."),
+
             Div(
                 Form(
                     Label("Master password de escrow:", cls="block text-sm font-bold text-gray-700 mb-2"),
@@ -457,6 +504,12 @@ def get_solicitar():
     return Layout(
         A("← Volver", href="/vista_usuarios", cls="text-anahuac hover:underline mb-4 inline-block"),
         H1("Solicitar Certificado S/MIME", cls="text-4xl font-serif font-bold text-charcoal mb-4"),
+        
+        TechNote("Estándares S/MIME", 
+                 "La emisión de certificados personales utiliza RSA-2048 (Punto 10 del reporte) "
+                 "con inyección de extensiones críticas para la protección de correo (Punto 11 del reporte), "
+                 "cumpliendo con el estándar IETF RFC 8551 para garantizar interoperabilidad con Outlook y Thunderbird."),
+
         estado_msg,
         Div(Form(Label("Email Institucional:", cls="block text-sm font-bold mb-1"), Input(type="email", name="email", placeholder="ej: nombre.apellido@anahuac.mx", required=True, cls="input-academic mb-4"), Label("Password Personal (RA):", cls="block text-sm font-bold mb-1"), Input(type="password", name="user_password", required=True, cls="input-academic mb-4"), Label("Password para el .p12:", cls="block text-sm font-bold mb-1"), Input(type="password", name="p12_password", required=True, minlength="8", cls="input-academic mb-6"), Button("Emitir mi Identidad Digital", type="submit", cls="btn-anahuac w-full"), action="/solicitar", method="post"), cls="card-academic max-w-xl mx-auto"),
         title="Solicitar Certificado"
@@ -486,7 +539,18 @@ def get_vista():
     if DIR_USUARIOS.exists():
         for p12 in sorted(DIR_USUARIOS.glob("*.p12")):
             tarjetas.append(Div(H3(f"Usuario: {p12.stem}", cls="text-lg font-bold text-charcoal mb-4"), A("📦 Descargar Bundle", href=f"/descargar_bundle/{p12.stem}", cls="btn-anahuac block text-center text-xs"), cls="card-academic"))
-    return Layout(A("← Volver", href="/", cls="text-anahuac font-bold hover:underline mb-4 inline-block"), H1("Portal de Usuarios", cls="text-4xl font-serif font-black text-charcoal mb-8"), Div(*tarjetas if tarjetas else [P("Sin certificados.")], cls="grid grid-cols-1 md:grid-cols-3 gap-6"), title="Portal de Usuarios")
+    return Layout(
+        A("← Volver", href="/", cls="text-anahuac font-bold hover:underline mb-4 inline-block"), 
+        H1("Portal de Usuarios", cls="text-4xl font-serif font-black text-charcoal mb-8"), 
+        
+        TechNote("Distribución Segura", 
+                 "Para minimizar la fricción de instalación (Punto 33 del reporte), el sistema entrega un "
+                 "paquete ZIP que contiene la Root CA, el certificado .p12 y una guía de instrucciones, "
+                 "estableciendo la confianza institucional necesaria para que el cliente confíe en la jerarquía."),
+
+        Div(*tarjetas if tarjetas else [P("Sin certificados.")], cls="grid grid-cols-1 md:grid-cols-3 gap-6"), 
+        title="Portal de Usuarios"
+    )
 
 @rt('/descargar/{nombre_base}')
 def get_descarga(nombre_base: str):
@@ -498,7 +562,17 @@ def get_descarga(nombre_base: str):
 def get_validar(filename: str):
     from crypto_core.validation import validate_user_cert
     report = validate_user_cert(filename)
-    return Layout(H1(f"Validación: {filename}", cls="text-2xl font-bold mb-6"), Pre(str(report), cls="bg-gray-50 p-6 rounded"), title="Validación")
+    return Layout(
+        A("← Volver", href="/vista_usuarios", cls="text-anahuac hover:underline mb-4 inline-block"), 
+        H1(f"Validación: {filename}", cls="text-2xl font-black text-charcoal mb-6"), 
+        
+        TechNote("Motor de Validación", 
+                 "El sistema ejecuta 14 checks técnicos automatizados (Punto 49 del reporte) para auditar la cadena de confianza. "
+                 "Verifica algoritmos fuertes, fechas de vigencia, y la vinculación algebraica AKI/SKI entre Root, Intermedia y Usuario."),
+
+        Pre(str(report), cls="bg-gray-50 p-6 rounded shadow-inner text-xs overflow-x-auto"), 
+        title="Validación"
+    )
 
 @rt('/descargar_root')
 def get_descargar_root():
