@@ -74,6 +74,16 @@ def init_db():
             filename     TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES usuarios(id)
         );
+                       
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha       TEXT NOT NULL,
+            evento      TEXT NOT NULL,
+            usuario_id  INTEGER,
+            detalles    TEXT,
+            ip_origen   TEXT,
+            FOREIGN KEY(usuario_id) REFERENCES usuarios(id)
+        );
     """)
 
     # Migraciones para soporte de expiracion / renovacion / validacion.
@@ -148,10 +158,16 @@ def admin_unlock(admin_password: str, inter_password: str, master_password: str)
     _session["master"] = master_password
     _session["since"] = datetime.utcnow().isoformat() + "Z"
 
+    # Inyección: Registrar desbloqueo
+    registrar_evento("CA_DESBLOQUEADA",detalles="El administrador ingresó las contraseñas maestras")
+
 
 def admin_lock():
     """Olvida los passwords cacheados. Tras esto, /solicitar deja de funcionar."""
     _session.clear()
+    
+    # Inyección: Registrar bloqueo
+    registrar_evento("CA_BLOQUEADA", detalles="Sesión administrativa cerrada manualmente")
 
 
 def is_unlocked() -> bool:
@@ -203,6 +219,10 @@ def enroll_user(
             (email, nombre, filename, org_unit, pw_hash, salt, now, enrolled_by),
         )
         conn.commit()
+
+        # Inyección: Registrar el alta del alumno
+        registrar_evento("USUARIO_ENROLADO", detalles=f"Email: {email}, OU: {org_unit}")
+
         return {
             "id": cur.lastrowid,
             "email": email,
@@ -298,6 +318,10 @@ def authenticate_user(email: str, user_password: str) -> dict:
                 (row["id"],),
             )
             conn.commit()
+
+            #Inyección: Registrar alerta de seguridad
+            registrar_evento("LOGIN_FALLADO", usuario_id=row["id"], detalles="Contraseña personal incorrecta")
+
             raise PermissionError("Credenciales invalidas.")
 
         conn.execute(
@@ -356,6 +380,10 @@ def record_emission(
             )
 
         conn.commit()
+
+        #Inyección: Registrar emisión y ligar al usuario y su IP
+        registrar_evento("CERTIFICADO_EMITIDO", usuario_id=user_id, detalles=f"Serial: {serial}", ip=ip)
+
         return new_id
     finally:
         conn.close()
@@ -524,3 +552,29 @@ def count_validation_failures() -> dict:
         summary[key] = summary.get(key, 0) + r["n"]
     summary["total_active"] = sum(summary.values())
     return summary
+
+# ──────────────────────────────────────────────────────────
+#  Funciones a llamar para las auditorias y Logs (Puntos 55 ~ 60)
+# ──────────────────────────────────────────────────────────
+def registrar_evento(evento: str, usuario_id: int = None, detalles: str = None, ip: str = None):
+    init_db()
+    conn = _connect()
+    try:
+        conn.execute(
+            "INSERT INTO audit_logs (fecha, evento, usuario_id, detalles, ip_origen) VALUES (?, ?, ?, ?, ?)",
+            (datetime.utcnow().isoformat() + "Z", evento, usuario_id, detalles, ip)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+# Función que revisará periodicamente el estado, se puede llamar desde el panel del Admin para generar un reporte de "salud" de los certs.
+def auditoria_revocacion():
+    """Revisa si hay discrepancias entre los certs activos y la base de datos."""
+    emisiones = list_emissions_with_status()
+    total = len(emisiones)
+    revocados = sum(1 for e in emisiones if e['status'] == 'revoked')
+    
+    reporte = f"Auditoría completada: {total} certificados analizados. {revocados} revocados."
+    registrar_evento("AUDITORIA_REVOCACION", detalles=reporte)
+    return reporte

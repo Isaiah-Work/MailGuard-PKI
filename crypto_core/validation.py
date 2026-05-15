@@ -3,7 +3,7 @@ Validacion automatica de cadenas X.509 y distribucion de intermedios.
 
 Cubre los 14 checks:
   Punto 16 (validacion de cadena): 1-10
-  Punto 17 (distribucion de intermedios): 11-14
+  Punto 50 (distribucion de intermedios): 11-14
 
 Cada check devuelve un dict con:
   - id: numero del check
@@ -77,7 +77,7 @@ def validate_user_cert(filename: str, p12_password: str | None = None) -> dict:
     checks.append(_check_root_self_signed(ROOT_CA_CRT))
     checks.append(_check_algorithms_strong([user_crt, INTER_CA_CRT, ROOT_CA_CRT]))
 
-    # ── Checks de distribucion de intermedios (Punto 17) ──
+    # ── Checks de distribucion de intermedios (Punto 50) ──
     checks.append(_check_chain_crt_exists())
     checks.append(_check_chain_crt_structure())
     checks.append(_check_p12_chain(user_p12, p12_password))

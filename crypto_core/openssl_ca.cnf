@@ -8,7 +8,7 @@ crlnumber         = $dir/crlnumber
 certificate       = $dir/inter-ca.crt
 private_key       = $dir/inter-ca.key
 default_md        = sha256
-default_crl_days  = 30
+default_crl_days  = 7 #Cambiamos de 30 a 7 dias para reducir la ventana de vulnerabilidad
 
 policy            = policy_anything
 
