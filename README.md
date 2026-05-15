@@ -1,11 +1,5 @@
 # Proyecto: Sistema de Seguridad en Correo Electrónico (PKI)
 
-**http://mailguard.ddns.net:8099/**  Enlace de Prueba
-
-Este repositorio contiene la implementación de una Infraestructura de Clave Pública (PKI) diseñada para proporcionar seguridad en comunicaciones por correo electrónico mediante S/MIME.
-
----
-
 ## 🚀 Guía de Inicio Rápido
 
 Sigue estos pasos para configurar e inicializar el proyecto desde cero.
