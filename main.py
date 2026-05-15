@@ -43,6 +43,7 @@ hdrs = (
         tr:hover { @apply bg-orange-50/30 transition-colors; }
 
         .header-gradient { background: linear-gradient(135deg, #ffffff 0%, #fef3c7 100%); }
+        .input-academic { @apply w-full p-3 border-2 border-gray-200 rounded-lg focus:ring-4 focus:ring-orange-50 focus:border-anahuac outline-none transition-all bg-white text-charcoal font-medium placeholder-gray-400 shadow-sm; }
     """, type="text/tailwindcss")
 )
 
@@ -165,17 +166,17 @@ def get_admin():
                 Div(
                     Form(
                         Label("Admin Password:", cls="block text-sm font-bold mb-2"),
-                        Input(type="password", name="admin_password", required=True, cls="mb-4"),
+                        Input(type="password", name="admin_password", required=True, cls="input-academic mb-4"),
                         Label("CA Intermedia Password:", cls="block text-sm font-bold mb-2"),
-                        Input(type="password", name="inter_password", required=True, cls="mb-4"),
+                        Input(type="password", name="inter_password", required=True, cls="input-academic mb-4"),
                         Label("Master Password (KRA):", cls="block text-sm font-bold mb-2"),
-                        Input(type="password", name="master_password", required=True, cls="mb-6"),
+                        Input(type="password", name="master_password", required=True, cls="input-academic mb-6"),
                         Button("Desbloquear CA", type="submit", cls="btn-anahuac w-full"),
                         action="/admin/unlock", method="post"
                     ) if not ra.is_unlocked() else 
                     Form(
                         Label("Confirmar Admin Password:", cls="block text-sm font-bold mb-2"),
-                        Input(type="password", name="admin_password", required=True, cls="mb-6"),
+                        Input(type="password", name="admin_password", required=True, cls="input-academic mb-6"),
                         Button("Bloquear CA", type="submit", cls="w-full bg-charcoal text-white font-bold py-3 rounded-lg hover:bg-black transition-all shadow-lg"),
                         action="/admin/lock", method="post"
                     ),
@@ -195,15 +196,15 @@ def get_admin():
                     H3("Enrolar Usuario Manualmente", cls="text-xl font-serif font-black text-charcoal mb-4"),
                     Form(
                         Label("Admin Password:", cls="block text-xs font-bold mb-1"),
-                        Input(type="password", name="admin_password", required=True, cls="mb-3 text-sm"),
+                        Input(type="password", name="admin_password", required=True, cls="input-academic mb-3 text-sm"),
                         Label("Email Institucional:", cls="block text-xs font-bold mb-1"),
-                        Input(type="email", name="email", placeholder="ejemplo@anahuac.mx", required=True, cls="mb-3 text-sm"),
+                        Input(type="email", name="email", placeholder="ejemplo@anahuac.mx", required=True, cls="input-academic mb-3 text-sm"),
                         Label("Nombre Completo:", cls="block text-xs font-bold mb-1"),
-                        Input(type="text", name="nombre", required=True, cls="mb-3 text-sm"),
+                        Input(type="text", name="nombre", required=True, cls="input-academic mb-3 text-sm"),
                         Label("OU:", cls="block text-xs font-bold mb-1"),
-                        Input(type="text", name="org_unit", value="Alumnos", required=True, cls="mb-3 text-sm"),
+                        Input(type="text", name="org_unit", value="Alumnos", required=True, cls="input-academic mb-3 text-sm"),
                         Label("Password Temporal:", cls="block text-xs font-bold mb-1"),
-                        Input(type="password", name="user_password", required=True, cls="mb-6 text-sm"),
+                        Input(type="password", name="user_password", required=True, cls="input-academic mb-6 text-sm"),
                         Button("Registrar Usuario", type="submit", cls="btn-anahuac w-full text-sm"),
                         action="/admin/enroll", method="post"
                     ),
@@ -215,7 +216,7 @@ def get_admin():
                     Div(
                         H3("Sincronización AD", cls="text-xl font-serif font-black text-charcoal mb-4"),
                         Form(
-                            Input(type="password", name="admin_password", placeholder="Password Admin", required=True, cls="mb-4 text-sm"),
+                            Input(type="password", name="admin_password", placeholder="Password Admin", required=True, cls="input-academic mb-4 text-sm"),
                             Button("Sincronizar con AD", type="submit", cls="btn-outline-anahuac w-full text-sm"),
                             action="/admin/sync_ad", method="post"
                         ),
@@ -225,12 +226,12 @@ def get_admin():
                         H3("Consultas y Bitácoras", cls="text-xl font-serif font-black text-charcoal mb-4"),
                         Div(
                             Form(
-                                Input(type="password", name="admin_password", placeholder="Admin Password", required=True, cls="mb-3 text-sm"),
+                                Input(type="password", name="admin_password", placeholder="Admin Password", required=True, cls="input-academic mb-3 text-sm"),
                                 Button("📊 Padrón de Usuarios", type="submit", cls="w-full text-left font-bold text-anahuac hover:bg-orange-50 p-2 rounded transition-all"),
                                 action="/admin/usuarios", method="post"
                             ),
                             Form(
-                                Input(type="password", name="admin_password", placeholder="Admin Password", required=True, cls="mb-3 text-sm"),
+                                Input(type="password", name="admin_password", placeholder="Admin Password", required=True, cls="input-academic mb-3 text-sm"),
                                 Button("📜 Bitácora de Emisiones", type="submit", cls="w-full text-left font-bold text-anahuac hover:bg-orange-50 p-2 rounded transition-all"),
                                 action="/admin/emisiones", method="post"
                             ),
@@ -257,7 +258,7 @@ def get_root_ca():
                 Form(
                     Div(
                         Label("Contraseña para la Root CA:", cls="block text-sm font-bold text-gray-700 mb-3"),
-                        Input(type="password", name="root_password", required=True)
+                        Input(type="password", name="root_password", required=True, cls="input-academic")
                     ),
                     Button("Generar Root CA", type="submit", cls="btn-anahuac w-full mt-8"),
                     action="/generar_root", method="post"
@@ -293,13 +294,13 @@ def get_inter_ca():
             Div(
                 Form(
                     Label("Contraseña de la Root CA:", cls="block text-sm font-bold text-gray-700 mb-2"),
-                    Input(type="password", name="root_password", required=True, cls="mb-4"),
+                    Input(type="password", name="root_password", required=True, cls="input-academic mb-4"),
                     
                     Label("Nueva contraseña para la CA Intermedia:", cls="block text-sm font-bold text-gray-700 mb-2"),
-                    Input(type="password", name="inter_password", required=True, cls="mb-4"),
+                    Input(type="password", name="inter_password", required=True, cls="input-academic mb-4"),
                     
                     Label("Master password para escrow (KRA):", cls="block text-sm font-bold text-gray-700 mb-2"),
-                    Input(type="password", name="master_password", required=True, cls="mb-6"),
+                    Input(type="password", name="master_password", required=True, cls="input-academic mb-6"),
                     
                     Button("Generar CA Intermedia", type="submit", cls="btn-anahuac w-full"),
                     action="/generar_inter", method="post"
@@ -323,16 +324,16 @@ def get_inter_ca():
             Div(
                 Form(
                     Label("Contraseña de la CA Intermedia:", cls="block text-sm font-bold text-gray-700 mb-2"),
-                    Input(type="password", name="inter_password", required=True, cls="mb-4"),
+                    Input(type="password", name="inter_password", required=True, cls="input-academic mb-4"),
                     Label("Nombre base del usuario (Filename):", cls="block text-sm font-bold text-gray-700 mb-2"),
-                    Input(type="text", name="cert_filename", placeholder="ej: jaime_chuma", required=True, cls="mb-4"),
+                    Input(type="text", name="cert_filename", placeholder="ej: jaime_chuma", required=True, cls="input-academic mb-4"),
                     Label("Motivo de la revocación:", cls="block text-sm font-bold text-gray-700 mb-2"),
                     Select(
                         Option("unspecified", value="unspecified"),
                         Option("keyCompromise", value="keyCompromise"),
                         Option("affiliationChanged", value="affiliationChanged"),
                         Option("superseded", value="superseded"),
-                        name="motivo", cls="mb-8 cursor-pointer"
+                        name="motivo", cls="input-academic mb-8 cursor-pointer"
                     ),
                     Button("Revocar Certificado", type="submit", cls="btn-anahuac w-full"),
                     action="/revocar", method="post"
@@ -343,11 +344,11 @@ def get_inter_ca():
             Div(
                 Form(
                     Label("Master password de escrow:", cls="block text-sm font-bold text-gray-700 mb-2"),
-                    Input(type="password", name="master_password", required=True, cls="mb-4"),
+                    Input(type="password", name="master_password", required=True, cls="input-academic mb-4"),
                     Label("Nombre base del usuario:", cls="block text-sm font-bold text-gray-700 mb-2"),
-                    Input(type="text", name="cert_filename", required=True, cls="mb-4"),
+                    Input(type="text", name="cert_filename", required=True, cls="input-academic mb-4"),
                     Label("Nueva contraseña para el .p12:", cls="block text-sm font-bold text-gray-700 mb-2"),
-                    Input(type="password", name="new_p12_password", required=True, cls="mb-8"),
+                    Input(type="password", name="new_p12_password", required=True, cls="input-academic mb-8"),
                     Button("Recuperar .p12", type="submit", cls="btn-anahuac w-full"),
                     action="/recover", method="post"
                 ),
@@ -377,12 +378,13 @@ def post_inter(root_password: str, inter_password: str, master_password: str):
 def _expiry_banner():
     s = ra.expiry_summary()
     if s["total_active"] == 0: return ""
-    return Div(H4("⚠ Certificados Próximos a Expirar", cls="font-bold text-orange-800 mb-2"), Form(Div(Input(type="password", name="admin_password", placeholder="Password Admin", required=True, cls="p-2 border rounded text-xs mr-2 text-charcoal"), Button("Ver Dashboard", type="submit", cls="bg-orange-600 text-white px-3 py-2 rounded text-xs font-bold hover:bg-orange-700 transition-colors"), cls="flex items-center"), action="/admin/expiraciones", method="post"), cls="bg-orange-50 border-l-4 border-orange-500 p-4 rounded shadow-sm")
+    return Div(H4("⚠ Certificados Próximos a Expirar", cls="font-bold text-orange-800 mb-2"), Form(Div(Input(type="password", name="admin_password", placeholder="Password Admin", required=True, cls="input-academic mb-3 text-xs mr-2 text-charcoal"), Button("Ver Dashboard", type="submit", cls="bg-orange-600 text-white px-3 py-2 rounded text-xs font-bold hover:bg-orange-700"), cls="flex items-center"), action="/admin/expiraciones", method="post"), cls="bg-orange-50 border-l-4 border-orange-500 p-4 rounded shadow-sm")
+
 
 def _validation_banner():
     s = ra.count_validation_failures()
     if s["total_active"] == 0: return ""
-    return Div(H4("⚠ Problemas de Validación Detectados", cls="font-bold text-red-800 mb-2"), Form(Div(Input(type="password", name="admin_password", placeholder="Password Admin", required=True, cls="p-2 border rounded text-xs mr-2 text-charcoal"), Button("Re-validar Todo", type="submit", cls="bg-red-600 text-white px-3 py-2 rounded text-xs font-bold hover:bg-red-700 transition-colors"), cls="flex items-center"), action="/admin/validacion_global", method="post"), cls="bg-red-50 border-l-4 border-red-500 p-4 rounded shadow-sm")
+    return Div(H4("⚠ Problemas de Validación Detectados", cls="font-bold text-red-800 mb-2"), Form(Div(Input(type="password", name="admin_password", placeholder="Password Admin", required=True, cls="input-academic mb-3 text-xs mr-2 text-charcoal"), Button("Re-validar Todo", type="submit", cls="bg-red-600 text-white px-3 py-2 rounded text-xs font-bold hover:bg-red-700 transition-colors"), cls="flex items-center"), action="/admin/validacion_global", method="post"), cls="bg-red-50 border-l-4 border-red-500 p-4 rounded shadow-sm")
 
 def _admin_error(msg: str):
     return Layout(Div(H1("Error ❌", cls="text-2xl font-bold text-red-600 mb-4"), Pre(str(msg), cls="bg-red-50 p-4 border rounded mb-6 text-sm overflow-x-auto text-red-800"), A("Volver al Panel", href="/admin", cls="btn-anahuac inline-block"), cls="max-w-2xl mx-auto text-center py-12"), title="Error Admin")
@@ -456,7 +458,7 @@ def get_solicitar():
         A("← Volver", href="/vista_usuarios", cls="text-anahuac hover:underline mb-4 inline-block"),
         H1("Solicitar Certificado S/MIME", cls="text-4xl font-serif font-bold text-charcoal mb-4"),
         estado_msg,
-        Div(Form(Label("Email Institucional:", cls="block text-sm font-bold mb-1"), Input(type="email", name="email", placeholder="ej: nombre.apellido@anahuac.mx", required=True, cls="mb-4"), Label("Password Personal (RA):", cls="block text-sm font-bold mb-1"), Input(type="password", name="user_password", required=True, cls="mb-4"), Label("Password para el .p12:", cls="block text-sm font-bold mb-1"), Input(type="password", name="p12_password", required=True, minlength="8", cls="mb-6"), Button("Emitir mi Identidad Digital", type="submit", cls="btn-anahuac w-full"), action="/solicitar", method="post"), cls="card-academic max-w-xl mx-auto"),
+        Div(Form(Label("Email Institucional:", cls="block text-sm font-bold mb-1"), Input(type="email", name="email", placeholder="ej: nombre.apellido@anahuac.mx", required=True, cls="input-academic mb-4"), Label("Password Personal (RA):", cls="block text-sm font-bold mb-1"), Input(type="password", name="user_password", required=True, cls="input-academic mb-4"), Label("Password para el .p12:", cls="block text-sm font-bold mb-1"), Input(type="password", name="p12_password", required=True, minlength="8", cls="input-academic mb-6"), Button("Emitir mi Identidad Digital", type="submit", cls="btn-anahuac w-full"), action="/solicitar", method="post"), cls="card-academic max-w-xl mx-auto"),
         title="Solicitar Certificado"
     )
 
