@@ -17,10 +17,12 @@ This document provides a comprehensive overview of the MailGuard PKI project, se
 The system is divided into several logical authorities and modules located in `crypto_core/`:
 - **Root CA (`root_ca.py`):** Generates the top-level self-signed certificate. Intended for offline/vault storage.
 - **Intermediate CA (`inter_ca.py`):** Acts as the primary issuing authority, signed by the Root CA.
-- **Registration Authority (RA) (`ra.py`):** Manages user identities, enrollment, and authentication.
+- **Registration Authority (RA) (`ra.py`):** Manages user identities, authentication, and certificate lifecycle. It is conceptually split into an **Admin Portal** (enrollment, AD sync, unlocking CA, expiration/validation tracking) and a **User Self-Service Portal** (certificate requests and renewals).
 - **Key Recovery Authority (KRA) / Escrow (`escrow.py`):** Provides a secure mechanism for administrative recovery of user private keys using a master password.
 - **Validation Engine (`validation.py`):** Performs automated X.509 chain validation and compliance checks.
 - **CRL Manager (`crl.py`):** Handles certificate revocation and CRL generation.
+- **Thunderbird Bundle Generator (`bundle.py`):** Packages the Root CA, user `.p12` certificate, and instructions into a single `.zip` to reduce installation friction.
+- **Active Directory Integration (`ldap_connector.py`):** Synchronizes user identities from the institutional Active Directory to the RA database.
 
 ## 🚀 Building and Running
 
@@ -64,6 +66,7 @@ The application defaults to `http://0.0.0.0:8099`.
 - **Password Hashing:** Uses `scrypt` for storing user passwords in the RA database.
 - **Private Key Protection:** All private keys (`.key` and `.p12`) are encrypted using **AES-256-CBC**.
 - **Session Security:** CA intermediate and master passwords are kept in memory during an "unlocked" session and never persisted to the database.
+- **Database Auditing & Tracking:** The RA SQLite database robustly tracks certificate serials, superseded certificates (for renewals), and caches global validation statuses.
 
 ### Standards Compliance
 The project adheres to several IETF RFCs for interoperability:
@@ -73,8 +76,9 @@ The project adheres to several IETF RFCs for interoperability:
 - **RFC 8551:** S/MIME v4.0 Message Specification.
 
 ## 📂 Key Files & Directories
-- `main.py`: The entry point and FastHTML routing definitions.
+- `main.py`: The entry point and FastHTML routing definitions. It clearly separates the Admin (`/admin`) and Public user (`/solicitar`, `/vista_usuarios`) views.
 - `crypto_core/`: The heart of the PKI logic.
 - `requirements.txt`: Project dependencies (primarily `fasthtml` and `ldap3`).
+- `dockerfile` / `docker-compose.yml`: Containerization configuration for the application.
 - `AGENTS.md`: Historical/Contextual agent instructions (internal).
 - `README.md`: High-level project description and roadmap.
