@@ -5,13 +5,14 @@ __pycache__/
 
 # Archivos Criptográficos (¡NUNCA SUBIR AL REPO!) 
 # Para prueba de concepto esta bien pero cuando sea público protegerlos
-# *.key
-#*.csr
-#*.crt
-#*.p12
-#*_password.txt
+*.key
+*.csr
+*.crt
+*.p12
+*_password.txt
+*.srl
 
 # Carpetas de salida de nuestros scripts
-#root_ca_output/
-#ca_intermedia_output/
-#usuarios_p12_output/
+root_ca_output/
+ca_intermedia_output/
+usuarios_p12_output/
