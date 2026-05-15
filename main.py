@@ -74,6 +74,7 @@ def Layout(*args, title="MailGuard PKI", **kwargs):
         Footer(
             Div(
                 P("Universidad Anáhuac México · Facultad de Ingeniería", cls="text-charcoal font-bold text-lg mb-2"),
+                P("Autores: Alexander Oliva · Diego Fuentes · Isaiah Rivas · Jaime Chumacero", cls="text-anahuac font-bold text-sm mb-2"),
                 P("Proyecto Final: Matemáticas Discretas · Enero - Mayo 2026", cls="text-gray-500 font-medium"),
                 cls="container mx-auto px-6 py-12 border-t border-gray-200 mt-auto text-center"
             ),
@@ -108,14 +109,9 @@ def get():
     return Layout(
         Div(
             EntityCard(
-                "Root CA", "Autoridad Certificadora Raíz",
-                "Establece el ancla de confianza maestra y emite el certificado raíz de la universidad. Diseñado para operar en entornos aislados de alta seguridad.",
-                "/root_ca", ICONS["root"]
-            ),
-            EntityCard(
-                "Intermediate CA", "Autoridad Certificadora Intermedia",
-                "Entidad operativa encargada de la emisión de certificados de usuario. Protege la clave raíz y gestiona la revocación institucional.",
-                "/inter_ca", ICONS["inter"]
+                "User Portal", "Portal del Usuario",
+                "Centro de auto-servicio para solicitar credenciales S/MIME, descargar archivos .p12 y consultar guías de instalación.",
+                "/vista_usuarios", ICONS["user"]
             ),
             EntityCard(
                 "RA Admin", "Autoridad de Registro (Admin)",
@@ -123,12 +119,52 @@ def get():
                 "/admin", ICONS["admin"]
             ),
             EntityCard(
-                "User Portal", "Portal del Usuario",
-                "Centro de auto-servicio para solicitar credenciales S/MIME, descargar archivos .p12 y consultar guías de instalación.",
-                "/vista_usuarios", ICONS["user"]
+                "Infraestructura", "Core de Seguridad",
+                "Gestión de Autoridades (Root/Inter) y servicios de validación en tiempo real (OCSP/CRL).",
+                "/infraestructura", ICONS["inter"]
+            ),
+            cls="grid grid-cols-1 md:grid-cols-3 gap-10"
+        )
+    )
+
+@rt('/infraestructura')
+def get_infraestructura():
+    return Layout(
+        A("← Volver al Hub", href="/", cls="text-anahuac font-bold hover:underline mb-6 inline-block"),
+        H1("Infraestructura Core de Seguridad", cls="text-4xl font-serif font-black text-charcoal mb-4"),
+        P("Gestión de las Autoridades Certificadoras y servicios de validación.", cls="mb-12 text-gray-600 font-medium text-lg"),
+
+        Div(
+            # Gestión de CAs
+            Div(
+                H2("Autoridades Certificadoras (CA)", cls="text-2xl font-serif font-black text-charcoal mb-6"),
+                Div(
+                    A("Configurar Root CA", href="/root_ca", cls="btn-outline-anahuac w-full mb-4 text-center"),
+                    A("Configurar CA Intermedia", href="/inter_ca", cls="btn-anahuac w-full text-center"),
+                    cls="space-y-4"
+                ),
+                cls="card-academic"
+            ),
+            
+            # Servicios de Validación
+            Div(
+                H2("Servicios de Validación", cls="text-2xl font-serif font-black text-charcoal mb-6"),
+                TechNote("OCSP & CRL", 
+                         "El sistema ofrece dos métodos de verificación: Listas de Revocación (CRL) "
+                         "y el Online Certificate Status Protocol (OCSP). El servidor OCSP permite "
+                         "consultas rápidas sin descargar toda la lista."),
+                Div(
+                    P(Strong("Servidor OCSP:"), " Disponible en puerto 8080"),
+                    P(Small("Para iniciar el servidor OCSP, ejecuta en terminal:")),
+                    Pre("python -m crypto_core.ocsp_server", cls="bg-gray-900 text-white p-4 rounded text-xs mt-2 overflow-x-auto"),
+                    A("Descargar CRL Actual", href="/crl/inter-ca.crl", cls="btn-outline-anahuac w-full mt-6 text-center"),
+                    cls="text-sm"
+                ),
+                cls="card-academic"
             ),
             cls="grid grid-cols-1 md:grid-cols-2 gap-10"
-        )
+        ),
+        title="Infraestructura"
     )
 
 @rt('/admin')
@@ -480,6 +516,41 @@ def post_admin_emisiones(admin_password: str):
     filas = [Tr(Th("ID"), Th("Fecha"), Th("Email"), Th("Filename"))]
     for e in emisiones: filas.append(Tr(Td(str(e["id"])), Td(e["issued_at"][:16]), Td(e["email"]), Td(Code(e["filename"], cls="text-xs"))))
     return Layout(A("← Volver", href="/admin", cls="text-anahuac hover:underline mb-4 inline-block"), H1("Bitácora de Emisiones", cls="text-3xl font-bold text-charcoal mb-6"), Div(Table(*filas), cls="overflow-x-auto"))
+
+@rt('/admin/auditoria', methods=['POST'])
+def post_admin_auditoria(admin_password: str):
+    if not ra.verify_admin(admin_password): return _admin_error("Admin password incorrecto.")
+    logs = ra.list_audit_logs()
+    filas = [Tr(Th("Fecha"), Th("Evento"), Th("Usuario"), Th("Detalles"), Th("IP"))]
+    for l in logs:
+        filas.append(Tr(
+            Td(l["fecha"][:16], cls="text-xs"),
+            Td(Strong(l["evento"]), cls="text-xs"),
+            Td(l["usuario_email"] or "—", cls="text-xs font-bold"),
+            Td(l["detalles"] or "—", cls="text-xs"),
+            Td(l["ip_origen"] or "—", cls="text-xs")
+        ))
+    return Layout(
+        A("← Volver", href="/admin", cls="text-anahuac hover:underline mb-4 inline-block"),
+        H1("Bitácora de Auditoría (Logs)", cls="text-3xl font-bold text-charcoal mb-6"),
+        Div(Table(*filas), cls="overflow-x-auto"),
+        title="Auditoría"
+    )
+
+@rt('/admin/auditoria_revocacion', methods=['POST'])
+def post_admin_auditoria_revocacion(admin_password: str):
+    if not ra.verify_admin(admin_password): return _admin_error("Admin password incorrecto.")
+    reporte = ra.auditoria_revocacion()
+    return Layout(
+        A("← Volver", href="/admin", cls="text-anahuac hover:underline mb-4 inline-block"),
+        H1("Resultado de la Auditoría", cls="text-3xl font-bold text-charcoal mb-6"),
+        Div(
+            P(reporte, cls="text-xl font-bold text-green-700"),
+            P("El evento ha sido registrado en la bitácora de auditoría.", cls="mt-4 text-gray-600"),
+            cls="card-academic text-center"
+        ),
+        title="Auditoría Revocación"
+    )
 
 @rt('/admin/expiraciones', methods=['POST'])
 def post_admin_expiraciones(admin_password: str):

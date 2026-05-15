@@ -74,6 +74,16 @@ def init_db():
             filename     TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES usuarios(id)
         );
+
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            fecha       TEXT NOT NULL,
+            evento      TEXT NOT NULL,
+            usuario_id  INTEGER,
+            detalles    TEXT,
+            ip_origen   TEXT,
+            FOREIGN KEY(usuario_id) REFERENCES usuarios(id)
+        );
     """)
 
     # Migraciones para soporte de expiracion / renovacion / validacion.
@@ -303,6 +313,7 @@ def authenticate_user(email: str, user_password: str) -> dict:
                 (row["id"],),
             )
             conn.commit()
+            registrar_evento("LOGIN_FALLADO", usuario_id=row["id"], detalles="Contraseña personal incorrecta")
             raise PermissionError("Credenciales invalidas.")
 
         conn.execute(
@@ -529,3 +540,60 @@ def count_validation_failures() -> dict:
         summary[key] = summary.get(key, 0) + r["n"]
     summary["total_active"] = sum(summary.values())
     return summary
+
+
+# ──────────────────────────────────────────────────────────
+#  Auditoria y Logs (Puntos 55-60)
+# ──────────────────────────────────────────────────────────
+def registrar_evento(evento: str, usuario_id: int = None, detalles: str = None, ip: str = None):
+    """Registra un evento en la bitacora de auditoria (audit_logs)."""
+    init_db()
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO audit_logs (fecha, evento, usuario_id, detalles, ip_origen)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                evento,
+                usuario_id,
+                detalles,
+                ip
+            )
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def auditoria_revocacion() -> str:
+    """Revisa si hay discrepancias entre los certs activos y la base de datos."""
+    emisiones = list_emissions_with_status()
+    total = len(emisiones)
+    revocados = sum(1 for e in emisiones if e['status'] == 'revoked')
+
+    reporte = f"Auditoría completada: {total} certificados analizados. {revocados} revocados."
+    registrar_evento("AUDITORIA_REVOCACION", detalles=reporte)
+    return reporte
+
+
+def list_audit_logs() -> list[dict]:
+    """Retorna los ultimos 100 eventos de auditoria."""
+    init_db()
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT l.id, l.fecha, l.evento, l.detalles, l.ip_origen,
+                   u.email as usuario_email
+            FROM audit_logs l
+            LEFT JOIN usuarios u ON u.id = l.usuario_id
+            ORDER BY l.fecha DESC
+            LIMIT 100
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
